@@ -21,6 +21,7 @@ git clone https://github.com/alexisfrutosgallardo/sistema-plc.git
 ### Backend
 
 ```bash
+cd sistema-plc/backend
 node server.js
 ```
 
