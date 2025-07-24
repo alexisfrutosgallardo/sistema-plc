@@ -25,7 +25,7 @@ function getFechaHoraLocal(date = new Date()) {
 // Función para sumar horas a una fecha (para FechaCura de cabecera)
 function addHoursToDate(dateString, hoursToAdd) {
   if (!dateString || hoursToAdd === undefined || hoursToAdd === null || isNaN(parseInt(hoursToAdd))) return '';
-  const date = new Date(dateString); // Asume dateString es YYYY-MM-DD
+  const date = new Date(dateString); // Asume dateString es YYYY-MM-DD HH:mm:ss
   date.setHours(date.getHours() + parseInt(hoursToAdd, 10));
   return getFechaHoraLocal(date); // Reutiliza el formateador existente para incluir la hora
 }
@@ -37,13 +37,13 @@ export default function Registro_Entrada({ usuario }) {
   const entNumeroParam = queryParams.get('entNumero');
 
   const [formCabecera, setFormCabecera] = useState({
-    Fecha: getFechaLocal(),
+    Fecha: getFechaLocal(), // Esta es la fecha del formulario, no la base para FechaCura
     NroCorte: '',
     Estado: 'Abierto',
     Comentario: '',
-    FechaCat: getFechaHoraLocal(),
+    FechaCat: getFechaHoraLocal(), // Siempre la fecha y hora actual de creación/actualización
     ProdCodigo: '',
-    FechaCura: '', // Se calculará dinámicamente
+    FechaCura: '', // Se calculará dinámicamente en base a la fecha actual + HorasCura
     Usuario: usuario ? usuario.legajo : '',
   });
 
@@ -54,7 +54,7 @@ export default function Registro_Entrada({ usuario }) {
   const [nroCorteError, setNroCorteError] = useState('');
   const [editando, setEditando] = useState(false);
 
-  // ✅ Estado para el contador de serie global (contiene la ÚLTIMA SERIE REGISTRADA)
+  // Estado para el contador de serie global (contiene la ÚLTIMA SERIE REGISTRADA)
   const [lastRegisteredGlobalSerie, setLastRegisteredGlobalSerie] = useState(0);
 
   // Cargar productos disponibles y la última serie global
@@ -78,7 +78,6 @@ export default function Registro_Entrada({ usuario }) {
           });
           const dataCounters = await resCounters.json();
           if (resCounters.ok) {
-            // ✅ CAMBIO CLAVE: Guardamos la última serie registrada, no la siguiente +1
             setLastRegisteredGlobalSerie(dataCounters.globalSerie);
           } else {
             console.error("❌ Error al obtener contadores iniciales:", dataCounters.error || 'Error desconocido');
@@ -130,12 +129,14 @@ export default function Registro_Entrada({ usuario }) {
     fetchInitialData();
   }, [entNumeroParam, usuario]);
 
-  // useEffect para actualizar FechaCura de la cabecera
+  // ✅ CAMBIO CLAVE AQUÍ: useEffect para actualizar FechaCura de la cabecera usando la fecha y hora actual
   useEffect(() => {
-    if (formCabecera.Fecha && formCabecera.ProdCodigo && productosDisponibles.length > 0) {
+    if (formCabecera.ProdCodigo && productosDisponibles.length > 0) {
       const selectedProduct = productosDisponibles.find(p => p.ProdCodigo === formCabecera.ProdCodigo);
       if (selectedProduct && selectedProduct.HorasCura !== undefined) {
-        const calculatedFechaCura = addHoursToDate(formCabecera.Fecha, selectedProduct.HorasCura);
+        // Usa la fecha y hora actual como base para el cálculo de FechaCura
+        const now = new Date();
+        const calculatedFechaCura = addHoursToDate(getFechaHoraLocal(now), selectedProduct.HorasCura);
         setFormCabecera(prev => ({ ...prev, FechaCura: calculatedFechaCura }));
       } else {
         setFormCabecera(prev => ({ ...prev, FechaCura: '' }));
@@ -143,7 +144,7 @@ export default function Registro_Entrada({ usuario }) {
     } else {
       setFormCabecera(prev => ({ ...prev, FechaCura: '' }));
     }
-  }, [formCabecera.Fecha, formCabecera.ProdCodigo, productosDisponibles]);
+  }, [formCabecera.ProdCodigo, productosDisponibles]); // Depende solo de ProdCodigo y productosDisponibles
 
   // Actualizar el usuario en formCabecera si cambia
   useEffect(() => {
@@ -180,15 +181,17 @@ export default function Registro_Entrada({ usuario }) {
     }
   };
 
-  // ✅ Modificado: handleAgregarProducto genera Serie LOCALMENTE
   const handleAgregarProducto = () => {
     if (!formCabecera.ProdCodigo) {
       setTipoMensaje('error');
       setMensaje('⚠️ Primero debe seleccionar un Producto Principal en la cabecera.');
+      setTimeout(() => {
+        setMensaje('');
+        setTipoMensaje('');
+      }, 3000); 
       return;
     }
 
-    // ✅ CAMBIO CLAVE: La serie temporal es (última serie registrada + cantidad de productos ya agregados + 1)
     const newSerie = String(lastRegisteredGlobalSerie + productosSeleccionados.length + 1);
 
     setProductosSeleccionados(prev => [
@@ -205,7 +208,6 @@ export default function Registro_Entrada({ usuario }) {
     ]);
   };
 
-  // Función para manejar cambios en los productos del detalle
   const handleProductoChange = (index, campo, valor) => {
     setProductosSeleccionados(prev =>
       prev.map((prod, i) =>
@@ -226,6 +228,7 @@ export default function Registro_Entrada({ usuario }) {
     if (!usuario?.legajo) {
       setTipoMensaje('error');
       setMensaje('❌ No se detectó el usuario autenticado. Por favor, inicie sesión.');
+      setTimeout(() => setMensaje(''), 4000);
       return;
     }
 
@@ -233,18 +236,21 @@ export default function Registro_Entrada({ usuario }) {
     if (!Fecha || !NroCorte || !ProdCodigo || !FechaCura) {
         setTipoMensaje('error');
         setMensaje('⚠️ Por favor, complete todos los campos obligatorios de la cabecera (Fecha, Número de Corte, Producto Principal, Fecha Cura).');
+        setTimeout(() => setMensaje(''), 4000);
         return;
     }
 
     if (nroCorteError) {
       setTipoMensaje('error');
       setMensaje('⚠️ El Número de Corte ingresado ya existe. Por favor, corrija el error.');
+      setTimeout(() => setMensaje(''), 4000);
       return;
     }
 
     if (productosSeleccionados.length === 0) {
       setTipoMensaje('error');
       setMensaje('⚠️ Debe agregar al menos un producto a la entrada.');
+      setTimeout(() => setMensaje(''), 4000);
       return;
     }
 
@@ -252,6 +258,7 @@ export default function Registro_Entrada({ usuario }) {
         if (!prod.Serie || prod.Cantidad === '' || !prod.Fecha || !prod.FechaCura || !prod.Estado) {
             setTipoMensaje('error');
             setMensaje('⚠️ Por favor, complete todos los campos obligatorios de cada producto de entrada (Serie, Cantidad, Fecha, Fecha Cura, Estado).');
+            setTimeout(() => setMensaje(''), 4000);
             return;
         }
     }
@@ -263,7 +270,7 @@ export default function Registro_Entrada({ usuario }) {
       productosSeleccionados: productosSeleccionados.map(p => ({
         ...p,
         Cantidad: parseFloat(p.Cantidad),
-        Iten: productosSeleccionados.indexOf(p) + 1, // Asegura que Iten sea un número y esté en orden
+        Iten: productosSeleccionados.indexOf(p) + 1,
       }))
     };
 
@@ -306,8 +313,7 @@ export default function Registro_Entrada({ usuario }) {
       });
       setProductosSeleccionados([]);
       setEditando(false);
-      // Los contadores se volverán a cargar en el useEffect al montar el componente de nuevo
-      setLastRegisteredGlobalSerie(0); 
+      setLastRegisteredGlobalSerie(0); // Se volverá a cargar en el useEffect
 
       setTimeout(() => {
         setMensaje('');
