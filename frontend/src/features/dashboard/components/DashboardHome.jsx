@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../../../config/config';
-import { Users, Package, Truck, Activity } from 'lucide-react'; // Iconos
+import { Users, Package, TrendingUp, Activity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function DashboardHome() {
@@ -129,7 +129,7 @@ export default function DashboardHome() {
             <p className="text-sm font-medium text-gray-500">Últimas Entradas</p>
             <p className="text-3xl font-semibold text-gray-900">{data.latestEntries.length}</p>
           </div>
-          <Truck size={48} className="text-purple-500 opacity-75" />
+          <TrendingUp size={48} className="text-purple-500 opacity-75" />
         </div>
       </div>
 

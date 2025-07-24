@@ -22,6 +22,14 @@ function getFechaHoraLocal(date = new Date()) {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
+// Función para sumar horas a una fecha (para FechaCura de cabecera)
+function addHoursToDate(dateString, hoursToAdd) {
+  if (!dateString || hoursToAdd === undefined || hoursToAdd === null || isNaN(parseInt(hoursToAdd))) return '';
+  const date = new Date(dateString); // Asume dateString es YYYY-MM-DD
+  date.setHours(date.getHours() + parseInt(hoursToAdd, 10));
+  return getFechaHoraLocal(date); // Reutiliza el formateador existente para incluir la hora
+}
+
 export default function Registro_Entrada({ usuario }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -35,7 +43,8 @@ export default function Registro_Entrada({ usuario }) {
     Comentario: '',
     FechaCat: getFechaHoraLocal(),
     ProdCodigo: '',
-    FechaCura: getFechaHoraLocal()
+    FechaCura: '', // Se calculará dinámicamente
+    Usuario: usuario ? usuario.legajo : '',
   });
 
   const [productosDisponibles, setProductosDisponibles] = useState([]);
@@ -44,56 +53,42 @@ export default function Registro_Entrada({ usuario }) {
   const [tipoMensaje, setTipoMensaje] = useState('');
   const [nroCorteError, setNroCorteError] = useState('');
   const [editando, setEditando] = useState(false);
-  const [fechaCuraCabecera, setFechaCuraCabecera] = useState('');
 
+  // ✅ Estado para el contador de serie global (contiene la ÚLTIMA SERIE REGISTRADA)
+  const [lastRegisteredGlobalSerie, setLastRegisteredGlobalSerie] = useState(0);
 
-
-  // ✅ Estados para los contadores de serie y prefijo de IdParam
-  const [nextGlobalSerie, setNextGlobalSerie] = useState(0);
-  const [currentEntryIdParam, setCurrentEntryIdParam] = useState(''); // El 'paXXX' real para esta entrada
-
-  const calcularFechaCuraCabecera = async (codigoProducto) => {
-    if (!codigoProducto) {
-      setFechaCuraCabecera('');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/producto/${codigoProducto}`);
-      const producto = await response.json();
-
-      if (producto && producto.HorasCura !== undefined) {
-        const ahora = new Date();
-        ahora.setHours(ahora.getHours() + parseInt(producto.HorasCura));
-        //const fechaCura = ahora.toISOString().slice(0, 19).replace('T', ' ');
-        const fechaCura = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')} ${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}:${String(ahora.getSeconds()).padStart(2, '0')}`;
-        setFechaCuraCabecera(fechaCura);
-      }
-    } catch (error) {
-      console.error("Error al calcular Fecha Cura:", error);
-      setFechaCuraCabecera('');
-    }
-  };
-
-
-  // Cargar productos disponibles y datos de la entrada si es edición
+  // Cargar productos disponibles y la última serie global
   useEffect(() => {
-    // Cargar productos disponibles
-    fetch(`${API_BASE_URL}/producto`, {
-      headers: { 'Content-Type': 'application/json' },
-    })
-      .then(res => res.json())
-      .then(setProductosDisponibles)
-      .catch(() => {
-        setTipoMensaje('error');
-        setMensaje('❌ Error al cargar productos disponibles.');
-      });
+    const fetchInitialData = async () => {
+      try {
+        // Cargar productos disponibles
+        const productosRes = await fetch(`${API_BASE_URL}/producto`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!productosRes.ok) {
+          throw new Error(`HTTP error! status: ${productosRes.status} al obtener productos`);
+        }
+        const productosData = await productosRes.json();
+        setProductosDisponibles(productosData);
 
-    // Lógica para cargar datos si estamos editando
-    if (entNumeroParam) {
-      setEditando(true);
-      const fetchEntradaParaEditar = async () => {
-        try {
+        // Obtener la última serie global registrada (solo si es una nueva entrada)
+        if (!entNumeroParam) {
+          const resCounters = await fetch(`${API_BASE_URL}/entrada/series-counters`, {
+            headers: { 'Content-Type': 'application/json' },
+          });
+          const dataCounters = await resCounters.json();
+          if (resCounters.ok) {
+            // ✅ CAMBIO CLAVE: Guardamos la última serie registrada, no la siguiente +1
+            setLastRegisteredGlobalSerie(dataCounters.globalSerie);
+          } else {
+            console.error("❌ Error al obtener contadores iniciales:", dataCounters.error || 'Error desconocido');
+            setTipoMensaje('error');
+            setMensaje('❌ Error al cargar los contadores iniciales de serie.');
+          }
+        }
+
+        if (entNumeroParam) {
+          setEditando(true);
           const resCabecera = await fetch(`${API_BASE_URL}/entrada/${entNumeroParam}`);
           if (!resCabecera.ok) throw new Error('Error al cargar la cabecera de la entrada.');
           const dataCabecera = await resCabecera.json();
@@ -102,39 +97,17 @@ export default function Registro_Entrada({ usuario }) {
           if (!resDetalles.ok) throw new Error('Error al cargar los detalles de la entrada.');
           const dataDetalles = await resDetalles.json();
 
-          setFormCabecera({
+          setFormCabecera(prev => ({
+            ...prev,
             Fecha: getFechaLocal(new Date(dataCabecera.Fecha)),
             NroCorte: dataCabecera.NroCorte,
             Estado: dataCabecera.Estado,
             Comentario: dataCabecera.Comentario,
             FechaCat: dataCabecera.FechaCat,
+            Usuario: dataCabecera.Usuario,
             ProdCodigo: dataCabecera.ProdCodigo,
-            FechaCura: getFechaHoraLocal()
-          });
-
-          // Establecer el IdParam de la entrada para los detalles existentes
-          if (dataDetalles.length > 0 && dataDetalles[0].IdParam) {
-            setCurrentEntryIdParam(dataDetalles[0].IdParam);
-          } else {
-            // Si no hay detalles o IdParam en la entrada existente, generamos uno nuevo
-            // Esto es un caso de borde, idealmente todas las entradas tendrían un IdParam.
-            // Para simplificar, si no hay, se generará uno nuevo al agregar un producto.
-            const fetchNewIdParamForEdit = async () => {
-              try {
-                const resCounters = await fetch(`${API_BASE_URL}/entrada/series-counters`, {
-                  headers: { 'Content-Type': 'application/json' },
-                });
-                const dataCounters = await resCounters.json();
-                if (resCounters.ok) {
-                  const newEntryIdParam = `pa${String(dataCounters.entryIdParam + 1).padStart(3, '0')}`;
-                  setCurrentEntryIdParam(newEntryIdParam);
-                }
-              } catch (err) {
-                console.error("Error al obtener nuevo IdParam para edición:", err);
-              }
-            };
-            fetchNewIdParamForEdit();
-          }
+            FechaCura: dataCabecera.FechaCura || '',
+          }));
           
           setProductosSeleccionados(dataDetalles.map(det => ({
             ProdCodigo: det.ProdCodigo,
@@ -144,63 +117,40 @@ export default function Registro_Entrada({ usuario }) {
             FechaCura: getFechaLocal(new Date(det.FechaCura)),
             FechaIngr: det.FechaIngr ? getFechaLocal(new Date(det.FechaIngr)) : '',
             Estado: det.Estado,
-            IdParam: det.IdParam // ✅ Mantener el IdParam existente
           })));
 
-        } catch (err) {
-          console.error("❌ Error al cargar entrada para edición:", err);
-          setTipoMensaje('error');
-          setMensaje(`❌ ${err.message || 'Ocurrió un error al cargar la entrada para edición.'}`);
         }
-      };
-      fetchEntradaParaEditar();
+      } catch (err) {
+        console.error("Error al cargar datos iniciales:", err);
+        setTipoMensaje('error');
+        setMensaje(`❌ Error al cargar datos: ${err.message}`);
+      }
+    };
+
+    fetchInitialData();
+  }, [entNumeroParam, usuario]);
+
+  // useEffect para actualizar FechaCura de la cabecera
+  useEffect(() => {
+    if (formCabecera.Fecha && formCabecera.ProdCodigo && productosDisponibles.length > 0) {
+      const selectedProduct = productosDisponibles.find(p => p.ProdCodigo === formCabecera.ProdCodigo);
+      if (selectedProduct && selectedProduct.HorasCura !== undefined) {
+        const calculatedFechaCura = addHoursToDate(formCabecera.Fecha, selectedProduct.HorasCura);
+        setFormCabecera(prev => ({ ...prev, FechaCura: calculatedFechaCura }));
+      } else {
+        setFormCabecera(prev => ({ ...prev, FechaCura: '' }));
+      }
     } else {
-      // ✅ Si es una nueva entrada, obtener los contadores del backend
-      const fetchCounters = async () => {
-        try {
-          console.log("➡️ Fetching series counters for new entry..."); // DEBUG
-          const res = await fetch(`${API_BASE_URL}/entrada/series-counters`, {
-            headers: { 'Content-Type': 'application/json' },
-          });
-          const data = await res.json();
-          if (res.ok) {
-            console.log("✅ Counters fetched:", data); // DEBUG
-            setNextGlobalSerie(data.globalSerie + 1); // El siguiente número de serie global disponible
-            setCurrentEntryIdParam(`pa${String(data.entryIdParam + 1).padStart(3, '0')}`); // Formatear el IdParam para esta nueva entrada
-          } else {
-            console.error("❌ Error al obtener contadores:", data.error || 'Error desconocido'); // DEBUG
-            setTipoMensaje('error');
-            setMensaje('❌ Error al cargar los contadores iniciales de serie.');
-          }
-        } catch (err) {
-          console.error("❌ Error al obtener contadores (fetch):", err); // DEBUG
-          setTipoMensaje('error');
-          setMensaje('❌ No se pudo conectar al servidor para obtener los contadores.');
-        }
-      };
-      fetchCounters();
+      setFormCabecera(prev => ({ ...prev, FechaCura: '' }));
     }
-  }, [entNumeroParam, editando]); // ✅ Añadido 'editando' a las dependencias para forzar re-fetch en ciertos casos
+  }, [formCabecera.Fecha, formCabecera.ProdCodigo, productosDisponibles]);
 
-  const productoPrincipalSeleccionado = useMemo(() => {
-    return productosDisponibles.find(p => p.ProdCodigo === formCabecera.ProdCodigo);
-  }, [formCabecera.ProdCodigo, productosDisponibles]);
-
-  
+  // Actualizar el usuario en formCabecera si cambia
   useEffect(() => {
-    if (formCabecera.ProdCodigo) {
-      setProductosSeleccionados(prevProductos =>
-        prevProductos.map(prod => ({
-          ...prod,
-          ProdCodigo: formCabecera.ProdCodigo
-        }))
-      );
+    if (usuario && usuario.legajo) {
+      setFormCabecera(prev => ({ ...prev, Usuario: usuario.legajo }));
     }
-  }, [formCabecera.ProdCodigo]);
-
-  useEffect(() => {
-    calcularFechaCuraCabecera(formCabecera.ProdCodigo);
-  }, [formCabecera.ProdCodigo]);
+  }, [usuario]);
 
   const handleCabeceraChange = async e => {
     const { name, value } = e.target;
@@ -230,7 +180,7 @@ export default function Registro_Entrada({ usuario }) {
     }
   };
 
-  // ✅ Modificado: handleAgregarProducto ahora genera Serie e IdParam localmente
+  // ✅ Modificado: handleAgregarProducto genera Serie LOCALMENTE
   const handleAgregarProducto = () => {
     if (!formCabecera.ProdCodigo) {
       setTipoMensaje('error');
@@ -238,37 +188,31 @@ export default function Registro_Entrada({ usuario }) {
       return;
     }
 
-    // Para nuevos productos, generar la siguiente Serie global
-    const newSerie = String(nextGlobalSerie);
-    console.log(`Adding product: Serie=${newSerie}, IdParam=${currentEntryIdParam}, nextGlobalSerie will be ${nextGlobalSerie + 1}`); // DEBUG
-    setNextGlobalSerie(prev => prev + 1); // Incrementar para el próximo producto
-
-    // Asignar el IdParam de la entrada actual (pa000, pa001, etc.)
-    const idParamForNewDetail = currentEntryIdParam;
+    // ✅ CAMBIO CLAVE: La serie temporal es (última serie registrada + cantidad de productos ya agregados + 1)
+    const newSerie = String(lastRegisteredGlobalSerie + productosSeleccionados.length + 1);
 
     setProductosSeleccionados(prev => [
       ...prev,
       {
         ProdCodigo: formCabecera.ProdCodigo,
-        Serie: newSerie,
+        Serie: newSerie, // Serie temporal
         Cantidad: '',
         Fecha: getFechaLocal(),
         FechaCura: '',
         FechaIngr: '',
         Estado: 'Activo',
-        IdParam: idParamForNewDetail // ✅ Asignar el IdParam
       }
     ]);
   };
 
-  // ✅ Función para manejar cambios en los productos del detalle
-const handleProductoChange = (index, campo, valor) => {
-  setProductosSeleccionados(prev =>
-    prev.map((prod, i) =>
-      i === index ? { ...prod, [campo]: valor } : prod
-    )
-  );
-};
+  // Función para manejar cambios en los productos del detalle
+  const handleProductoChange = (index, campo, valor) => {
+    setProductosSeleccionados(prev =>
+      prev.map((prod, i) =>
+        i === index ? { ...prod, [campo]: valor } : prod
+      )
+    );
+  };
 
   const handleEliminarProducto = (index) => {
     setProductosSeleccionados(prev => prev.filter((_, i) => i !== index));
@@ -285,10 +229,10 @@ const handleProductoChange = (index, campo, valor) => {
       return;
     }
 
-    const { Fecha, NroCorte, FechaCat, ProdCodigo } = formCabecera;
-    if (!Fecha || !NroCorte || !FechaCat || !ProdCodigo) {
+    const { Fecha, NroCorte, ProdCodigo, FechaCura } = formCabecera;
+    if (!Fecha || !NroCorte || !ProdCodigo || !FechaCura) {
         setTipoMensaje('error');
-        setMensaje('⚠️ Por favor, complete todos los campos obligatorios de la cabecera (Fecha, Número de Corte, Producto Principal, Fecha de Carga).');
+        setMensaje('⚠️ Por favor, complete todos los campos obligatorios de la cabecera (Fecha, Número de Corte, Producto Principal, Fecha Cura).');
         return;
     }
 
@@ -305,10 +249,9 @@ const handleProductoChange = (index, campo, valor) => {
     }
 
     for (const prod of productosSeleccionados) {
-        // ✅ Asegurarse de que IdParam también esté presente para nuevos productos
-        if (!prod.Serie || prod.Cantidad === '' || !prod.Fecha || !prod.Cantidad || !prod.FechaCura || !prod.Estado || !prod.IdParam) {
+        if (!prod.Serie || prod.Cantidad === '' || !prod.Fecha || !prod.FechaCura || !prod.Estado) {
             setTipoMensaje('error');
-            setMensaje('⚠️ Por favor, complete todos los campos obligatorios de cada producto de entrada (Serie, Cantidad, Fecha, Fecha Cura, Estado, IdParam).');
+            setMensaje('⚠️ Por favor, complete todos los campos obligatorios de cada producto de entrada (Serie, Cantidad, Fecha, Fecha Cura, Estado).');
             return;
         }
     }
@@ -320,6 +263,7 @@ const handleProductoChange = (index, campo, valor) => {
       productosSeleccionados: productosSeleccionados.map(p => ({
         ...p,
         Cantidad: parseFloat(p.Cantidad),
+        Iten: productosSeleccionados.indexOf(p) + 1, // Asegura que Iten sea un número y esté en orden
       }))
     };
 
@@ -349,7 +293,6 @@ const handleProductoChange = (index, campo, valor) => {
         setMensaje(data.message);
       }
       
-      // ✅ Redirección a /registro/lista-entradas después de un registro/actualización exitosa
       // Limpiar formulario y reiniciar estados
       setFormCabecera({
         Fecha: getFechaLocal(),
@@ -358,17 +301,17 @@ const handleProductoChange = (index, campo, valor) => {
         Comentario: '',
         FechaCat: getFechaHoraLocal(),
         ProdCodigo: '',
-        FechaCura: getFechaHoraLocal()
+        FechaCura: '',
+        Usuario: usuario ? usuario.legajo : '',
       });
       setProductosSeleccionados([]);
       setEditando(false);
-      // ✅ Reiniciar contadores para la próxima nueva entrada (se volverán a cargar en useEffect)
-      setNextGlobalSerie(0); 
-      setCurrentEntryIdParam(''); // Reiniciar también el IdParam de la entrada
+      // Los contadores se volverán a cargar en el useEffect al montar el componente de nuevo
+      setLastRegisteredGlobalSerie(0); 
 
       setTimeout(() => {
         setMensaje('');
-        navigate('/registro/lista-entradas'); // Redirección final
+        navigate('/registro/lista-entradas');
       }, 1500);
 
     } catch (err) {
@@ -378,6 +321,10 @@ const handleProductoChange = (index, campo, valor) => {
       setTimeout(() => setMensaje(''), 4000);
     }
   };
+
+  const selectedMainProduct = useMemo(() => {
+    return productosDisponibles.find(p => p.ProdCodigo === formCabecera.ProdCodigo);
+  }, [formCabecera.ProdCodigo, productosDisponibles]);
 
   return (
     <div className="max-w-4xl mx-auto p-6 bg-gray-50 shadow-lg rounded-lg mt-10">
@@ -454,7 +401,7 @@ const handleProductoChange = (index, campo, valor) => {
             <label className="block text-gray-700 font-semibold mb-2">Fecha Cura:</label>
             <input
               type="text"
-              value={fechaCuraCabecera}
+              value={formCabecera.FechaCura}
               disabled
               className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-700"
             />
@@ -485,14 +432,14 @@ const handleProductoChange = (index, campo, valor) => {
             <div>
               <label className="block text-sm font-medium text-gray-700">Producto:</label>
               <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-800">
-                {productoPrincipalSeleccionado ? 
-                 `${productoPrincipalSeleccionado.ProdNombre} (${productoPrincipalSeleccionado.TipProdNombre})` : 
+                {selectedMainProduct ? 
+                 `${selectedMainProduct.ProdNombre} (${selectedMainProduct.TipProdNombre})` : 
                  'Producto no seleccionado'}
               </p>
               <input type="hidden" name="ProdCodigo" value={item.ProdCodigo} />
             </div>
 
-            {/* ✅ Campo Serie ahora es de solo lectura y muestra el número autoincremental */}
+            {/* Campo Serie ahora es de solo lectura y muestra el número autoincremental */}
             <div>
               <label htmlFor={`Serie-${index}`} className="block text-sm font-medium text-gray-700">Serie:</label>
               <input

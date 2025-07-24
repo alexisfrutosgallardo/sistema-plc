@@ -5,7 +5,6 @@ const entryRepository = {
   // Obtener todas las entradas (cabecera) con nombres de usuario y producto
   getAllEntries: (sortBy = 'EntNumero', order = 'DESC') => {
     return new Promise((resolve, reject) => {
-      // ✅ Modificado: Incluye JOINs para obtener UsuarioNombre, ProdPrincipalNombre y TipProdNombre
       const sql = `
         SELECT
           e.EntNumero,
@@ -16,6 +15,7 @@ const entryRepository = {
           e.FechaCat,
           e.Usuario,
           e.ProdCodigo,
+          e.FechaCura,
           u.UsuNombre AS UsuarioNombre,
           p.ProdNombre AS ProdPrincipalNombre,
           tp.TipProdNombre AS ProdPrincipalTipoNombre
@@ -36,7 +36,7 @@ const entryRepository = {
   getEntryByNumber: (entNumero) => {
     return new Promise((resolve, reject) => {
       const sql = `
-        SELECT e.EntNumero, e.Fecha, e.NroCorte, e.Estado, e.Comentario, e.FechaCat, e.Usuario, e.ProdCodigo,
+        SELECT e.EntNumero, e.Fecha, e.NroCorte, e.Estado, e.Comentario, e.FechaCat, e.Usuario, e.ProdCodigo, e.FechaCura,
               u.UsuNombre AS UsuarioNombre,
               p.ProdNombre AS ProdPrincipalNombre, tp.TipProdNombre AS ProdPrincipalTipoNombre
         FROM Entrada1 e
@@ -103,7 +103,7 @@ const entryRepository = {
   // Crear una nueva entrada (cabecera y detalles con serie incremental)
   createEntry: (entryData) => {
     return new Promise((resolve, reject) => {
-      const { Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, productosSeleccionados } = entryData;
+      const { Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, FechaCura, productosSeleccionados } = entryData;
 
       db.serialize(async () => {
         db.run("BEGIN TRANSACTION;");
@@ -129,7 +129,7 @@ const entryRepository = {
             Usuario,
             FechaCat,
             ProdCodigo,
-            entryData.FechaCura
+            FechaCura
           ];
 
           db.run(sql1, params1, async function (err) {
@@ -139,13 +139,11 @@ const entryRepository = {
             }
 
             try {
-              // No obtenemos la última serie aquí, ya que el frontend la envía
               const entNumeroInsertado = nextEntNumero;
 
               for (let i = 0; i < productosSeleccionados.length; i++) {
                 const prod = productosSeleccionados[i];
-                // La serie ya viene del frontend, la usamos directamente
-                const serieToUse = prod.Serie;
+                const serieToUse = prod.Serie; // La serie ya viene del frontend
 
                 const sql2 = `
                   INSERT INTO Entrada2 (EntNumero, Iten, ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat)
@@ -161,7 +159,7 @@ const entryRepository = {
                   prod.FechaCura,
                   prod.FechaIngr,
                   prod.Estado || 'Activo',
-                  Usuario, // ✅ Asegura que el usuario de la cabecera se use en el detalle
+                  Usuario,
                   FechaCat
                 ];
 
@@ -203,30 +201,135 @@ const entryRepository = {
     });
   },
 
-  // Insertar o actualizar la serie (sobrescribir el único registro)
-  insertarNuevaSerie: () => {
+  // Actualizar una entrada (cabecera y detalles)
+  updateEntry: (entNumero, entryData) => {
     return new Promise((resolve, reject) => {
-      const updateSQL = `UPDATE Parametro SET serie = serie + 1 WHERE id = 1`;
-      db.run(updateSQL, function (err) {
-        if (err) {
-          return reject(err);
-        }
+      const { Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, FechaCura, productosSeleccionados } = entryData;
 
-        const selectSQL = `SELECT serie FROM Parametro WHERE id = 1`;
-        db.get(selectSQL, (err, row) => {
-          if (err) {
-            return reject(err);
+      db.serialize(() => {
+        db.run("BEGIN TRANSACTION;", (beginErr) => {
+          if (beginErr) {
+            return reject(beginErr);
           }
-          resolve(row.serie);  // Retorna el nuevo valor de serie
+
+          const sqlUpdateEntry = `
+            UPDATE Entrada1
+            SET Fecha = ?, NroCorte = ?, Estado = ?, Comentario = ?, FechaCat = ?, Usuario = ?, ProdCodigo = ?, FechaCura = ?
+            WHERE EntNumero = ?
+          `;
+          db.run(sqlUpdateEntry, [
+            Fecha,
+            NroCorte,
+            Estado,
+            Comentario,
+            FechaCat,
+            Usuario,
+            ProdCodigo,
+            FechaCura,
+            entNumero,
+          ], async function (err) {
+            if (err) {
+              db.run("ROLLBACK;");
+              return reject(err);
+            }
+
+            const sqlDeleteDetails = `DELETE FROM Entrada2 WHERE EntNumero = ?`;
+            db.run(sqlDeleteDetails, [entNumero], async function (err) {
+              if (err) {
+                db.run("ROLLBACK;");
+                return reject(err);
+              }
+
+              const insertPromises = productosSeleccionados.map(async detail => {
+                const serieToUse = detail.Serie;
+
+                return new Promise((resolveDetail, rejectDetail) => {
+                  const sqlInsertDetail = `INSERT INTO Entrada2 (EntNumero, Iten, ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                  db.run(sqlInsertDetail, [
+                    entNumero,
+                    detail.Iten,
+                    detail.ProdCodigo,
+                    serieToUse,
+                    detail.Cantidad,
+                    detail.Fecha,
+                    detail.FechaCura,
+                    detail.FechaIngr,
+                    detail.Estado,
+                    Usuario,
+                    FechaCat,
+                  ], function (detailErr) {
+                    if (detailErr) {
+                      return rejectDetail(detailErr);
+                    }
+                    resolveDetail();
+                  });
+                });
+              });
+
+              Promise.all(insertPromises)
+                .then(() => {
+                  db.run("COMMIT;", (commitErr) => {
+                    if (commitErr) {
+                      db.run("ROLLBACK;");
+                      return reject(commitErr);
+                    }
+                    resolve({ message: "✅ Entrada y detalles actualizados correctamente", EntNumero: entNumero });
+                  });
+                })
+                .catch(detailErr => {
+                  db.run("ROLLBACK;");
+                  reject(detailErr);
+                });
+            });
+          });
         });
       });
     });
   },
 
+  // ✅ Obtener la última serie registrada (del único registro con id=1)
+  obtenerUltimaSerie: () => {
+    return new Promise((resolve, reject) => {
+      const query = `SELECT serie FROM Parametro WHERE id = 1`;
+      db.get(query, [], (err, row) => {
+        if (err) {
+          console.error("❌ Error al obtener la última serie:", err.message);
+          return reject(err);
+        }
+        const ultimaSerie = row ? parseInt(row.serie) : 0;
+        resolve(ultimaSerie);
+      });
+    });
+  },
+
+  // ✅ Insertar o actualizar la serie global (sobrescribir el único registro con id=1)
+  // Solo se llama al registrar la entrada principal
+  incrementarSerieGlobal: (nuevaSerie) => {
+    return new Promise((resolve, reject) => {
+      const sql = `INSERT OR REPLACE INTO Parametro (id, serie) VALUES (1, ?)`;
+      db.run(sql, [nuevaSerie.toString()], function (err) {
+        if (err) {
+          console.error("❌ Error al guardar/actualizar la serie única:", err.message);
+          return reject(err);
+        }
+        resolve({ message: "Serie guardada/actualizada", id: 1 });
+      });
+    });
+  },
 
   getLatestEntries: (limit = 5) => {
     return new Promise((resolve, reject) => {
-      const sql = `SELECT * FROM Entrada1 ORDER BY EntNumero DESC LIMIT ?`;
+      const sql = `
+            SELECT
+              e.EntNumero,
+              e.Fecha,
+              e.NroCorte,
+              e.Estado,
+              u.UsuNombre
+            FROM Entrada1 e
+            LEFT JOIN Usuario u ON e.Usuario = u.legajo
+            ORDER BY e.FechaCat DESC
+            LIMIT ?`;
       db.all(sql, [limit], (err, rows) => {
         if (err) reject(err);
         else resolve(rows);
@@ -257,7 +360,6 @@ const entryRepository = {
             return reject(beginErr);
           }
 
-          // Eliminar detalles de Entrada2
           const sqlDeleteDetails = `DELETE FROM Entrada2 WHERE EntNumero = ?`;
           db.run(sqlDeleteDetails, [entNumero], function (err) {
             if (err) {

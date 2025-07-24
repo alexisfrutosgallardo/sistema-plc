@@ -139,7 +139,7 @@ export default function Lista_Entradas() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6 bg-gray-50 shadow-lg rounded-lg mt-10">
+    <div className="min-h-screen mx-auto p-6 bg-gray-50 shadow-lg rounded-lg mt-10">
       <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Lista de Entradas</h2>
 
       <div className="flex justify-end items-center mb-6">
@@ -185,6 +185,9 @@ export default function Lista_Entradas() {
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('FechaCat')}>
                 <div className="flex items-center">Fecha de Carga {renderSortIcon('FechaCat')}</div>
               </th>
+              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('FechaCura')}>
+                <div className="flex items-center">Fecha de Cura {renderSortIcon('FechaCura')}</div>
+              </th>
               <th className="px-5 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan="2">Acciones</th> {/* Colspan ajustado para incluir Editar */}
          
             </tr>
@@ -202,6 +205,7 @@ export default function Lista_Entradas() {
                     <td className="px-5 py-3 text-sm">{ent.ProdPrincipalNombre} ({ent.ProdPrincipalTipoNombre})</td>
                     <td className="px-5 py-3 text-sm">{ent.Comentario}</td>
                     <td className="px-5 py-3 text-sm">{formatDateToYYYYMMDDHHMMSS(ent.FechaCat)}</td>
+                    <td className="px-5 py-3 text-sm">{formatDateToYYYYMMDDHHMMSS(ent.FechaCura)}</td>
                     <td className="px-5 py-3 text-center space-x-2 flex flex-col sm:flex-row sm:space-x-2 sm:space-y-0 space-y-2 justify-center items-center">
                       {/* ✅ Botón de Editar */}
                       <button

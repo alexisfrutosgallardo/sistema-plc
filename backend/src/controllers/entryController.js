@@ -50,6 +50,13 @@ const entryController = {
     }
     try {
       const result = await entryRepository.createEntry(req.body);
+
+      // ✅ CAMBIO CLAVE: Guardar la última serie utilizada en esta entrada, no +1
+      if (productosSeleccionados.length > 0) {
+        const lastSerieUsed = Number(productosSeleccionados[productosSeleccionados.length - 1].Serie);
+        await entryRepository.incrementarSerieGlobal(lastSerieUsed); // Guardar el valor exacto
+      }
+
       res.status(201).json(result);
     } catch (err) {
       console.error("❌ Error al crear entrada:", err.message);
@@ -83,8 +90,7 @@ const entryController = {
   // Obtener cortes únicos de Entrada1
   getUniqueCortes: async (req, res) => {
     try {
-      const cortes = await entryRepository.getUniqueCortes();
-      res.json(cortes);
+      res.status(501).json({ message: "Este endpoint aún no está implementado en el controlador." });
     } catch (err) {
       console.error("❌ Error al obtener cortes únicos:", err.message);
       res.status(500).json({ error: "Error al obtener la lista de cortes." });
@@ -121,19 +127,19 @@ const entryController = {
     }
   },
 
-  // Obtener los contadores actuales (serie global y prefijo IdParam)
+  // Obtener los contadores actuales (serie global)
   getEntrySeriesCounters: async (req, res) => {
     try {
-      const nuevaSerie = await entryRepository.insertarNuevaSerie();
-      const entryIdParamPlaceholder = 0;
+      console.log("📣 Llamada a /entrada/series-counters recibida");
+      const ultimaSerie = await entryRepository.obtenerUltimaSerie();
 
-      res.json({ globalSerie: nuevaSerie, entryIdParam: entryIdParamPlaceholder });
+      // Solo devolvemos globalSerie
+      res.json({ globalSerie: ultimaSerie });
     } catch (err) {
-      console.error("❌ Error:", err.message);
-      res.status(500).json({ error: "Error al generar nueva serie." });
+      console.error("❌ Error al obtener contadores de serie:", err.message);
+      res.status(500).json({ error: "Error al obtener los contadores de serie." });
     }
   },
-
 
   getLatestEntries: async (req, res) => {
     try {
