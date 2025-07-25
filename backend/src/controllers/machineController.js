@@ -48,12 +48,12 @@ const machineController = {
   // Actualizar una máquina
   updateMachine: async (req, res) => {
     const { maqCodigo } = req.params;
-    const { MaqNombre, ModificadoPor, FechaModif } = req.body;
-    if (!MaqNombre || !ModificadoPor || !FechaModif) {
-      return res.status(400).json({ error: "⚠️ El nombre, usuario de modificación y fecha de modificación son obligatorios para actualizar." });
+    const { MaqNombre } = req.body; // Solo validamos MaqNombre si es lo único que se espera en el payload
+    if (!MaqNombre) { // ✅ Simplificada la validación
+      return res.status(400).json({ error: "⚠️ El nombre de la máquina es obligatorio para actualizar." });
     }
     try {
-      const result = await machineRepository.updateMachine(maqCodigo, req.body);
+      const result = await machineRepository.updateMachine(maqCodigo, req.body); // ✅ Pasamos el body completo
       if (result.changes === 0) {
         return res.status(404).json({ error: "Máquina no encontrada o no hubo cambios para actualizar." });
       }

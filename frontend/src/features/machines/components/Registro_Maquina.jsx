@@ -2,11 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../../config/config';
 
+// Función para obtener fecha y hora local en formato ISO completo (con TZ corregida)
+function getFechaHoraLocal(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 export default function Registro_Maquina({ usuario }) {
   const [formData, setFormData] = useState({
     MaqNombre: '',
-    // FechaCat y Usuario se añadirán en handleSubmit para POST
-    // ModificadoPor y FechaModif se añadirán en handleSubmit para PUT
+    // Se inicializan aquí para que existan en el estado, aunque sus valores
+    // para POST/PUT se gestionen en handleSubmit
+    Usuario: '',
+    FechaCat: '',
+    ModificadoPor: '',
+    FechaModif: '',
   });
 
   const [mensaje, setMensaje] = useState('');
@@ -25,8 +40,10 @@ export default function Registro_Maquina({ usuario }) {
           if (data.error) throw new Error(data.error);
           setFormData({
             MaqNombre: data.MaqNombre || '',
-            // No cargamos FechaCat, Usuario, ModificadoPor, FechaModif aquí
-            // ya que son datos de auditoría que se gestionan en el backend o en el submit.
+            Usuario: data.Usuario || '',
+            FechaCat: data.FechaCat || '',
+            ModificadoPor: data.ModificadoPor || '',
+            FechaModif: data.FechaModif || '',
           });
         })
         .catch(err => {
@@ -58,15 +75,23 @@ export default function Registro_Maquina({ usuario }) {
 
         const method = codigoMaquina ? 'PUT' : 'POST';
 
-        const now = new Date().toISOString(); // Fecha actual en formato ISO
+        const now = getFechaHoraLocal(); // Fecha y hora actual en formato ISO
 
-        const payload = {
-            ...formData,
-            ...(codigoMaquina
-                ? { ModificadoPor: usuario.legajo, FechaModif: now }  // Para PUT
-                : { Usuario: usuario.legajo, FechaCat: now }          // Para POST
-            )
-        };
+        let payload;
+
+        if (codigoMaquina) { // Actualizar (PUT)
+            payload = {
+                MaqNombre: formData.MaqNombre,
+                ModificadoPor: usuario.legajo, // Usuario que modifica
+                FechaModif: now,               // Fecha de modificación
+            };
+        } else { // Crear (POST)
+            payload = {
+                MaqNombre: formData.MaqNombre,
+                Usuario: usuario.legajo,       // Usuario que crea
+                FechaCat: now,                 // Fecha de creación
+            };
+        }
 
         const res = await fetch(url, {
             method,
@@ -80,13 +105,11 @@ export default function Registro_Maquina({ usuario }) {
         setTipoMensaje('success');
         setMensaje(data.message);
 
-        if (!codigoMaquina) {
-            setTimeout(() => {
-                navigate('/registro/lista-maquinas');
-            }, 1500); 
-        } else {
-            setTimeout(() => setMensaje(''), 3000);
-        }
+        // ✅ Redirigir a Lista de Máquinas después de un registro o actualización exitosa
+        setTimeout(() => {
+            setMensaje(''); // Limpiar mensaje antes de redirigir
+            navigate('/registro/lista-maquinas');
+        }, 1500); // Dar tiempo para que el usuario vea el mensaje de éxito
 
     } catch (err) {
         setTipoMensaje('error');
@@ -98,6 +121,10 @@ export default function Registro_Maquina({ usuario }) {
   const resetFormulario = () => {
     setFormData({
       MaqNombre: '',
+      Usuario: '',
+      FechaCat: '',
+      ModificadoPor: '',
+      FechaModif: '',
     });
     setMensaje('');
     setTipoMensaje('');

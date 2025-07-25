@@ -23,8 +23,8 @@ const formatDateToYYYYMMDDHHMMSS = (dateString) => {
 
 export default function Lista_Maquinas() {
   const [maquinas, setMaquinas] = useState([]);
-  const [usuarios, setUsuarios] = useState([]);
-  const [mensaje, setMensaje] = useState(''); // Añadido estado para mensajes
+  const [usuarios, setUsuarios] = useState([]); // Mantener para 'Creado por' si es necesario
+  const [mensaje, setMensaje] = useState('');
   const [sortColumn, setSortColumn] = useState('MaqCodigo');
   const [sortDirection, setSortDirection] = useState('ASC');
   const navigate = useNavigate();
@@ -33,7 +33,7 @@ export default function Lista_Maquinas() {
     try {
       const res = await fetch(`${API_BASE_URL}/maquina?sortBy=${sortColumn}&order=${sortDirection}`);
       const data = await res.json();
-      if (Array.isArray(data)) { // Asegurarse de que la respuesta sea un array
+      if (Array.isArray(data)) {
         setMaquinas(data);
       } else {
         setMensaje('❌ Error al cargar máquinas: Formato de datos inesperado.');
@@ -49,7 +49,7 @@ export default function Lista_Maquinas() {
     try {
       const res = await fetch(`${API_BASE_URL}/usuarios`);
       const data = await res.json();
-      if (Array.isArray(data)) { // Asegurarse de que la respuesta sea un array
+      if (Array.isArray(data)) {
         setUsuarios(data);
       } else {
         console.error('Datos de usuarios recibidos no son un array:', data);
@@ -59,6 +59,7 @@ export default function Lista_Maquinas() {
     }
   };
 
+  // Esta función sigue siendo útil si 'Usuario' (creador) no trae el nombre completo directamente
   const getNombreUsuario = (legajo) => {
     const usuario = usuarios.find(u => u.legajo === legajo);
     return usuario ? usuario.UsuNombre : legajo;
@@ -106,7 +107,7 @@ export default function Lista_Maquinas() {
 
   useEffect(() => {
     fetchMaquinas();
-    fetchUsuarios();
+    fetchUsuarios(); // Todavía necesitamos usuarios para 'Creado por'
   }, [fetchMaquinas]);
 
   const renderSortIcon = (column) => {
@@ -166,10 +167,13 @@ export default function Lista_Maquinas() {
                 <tr key={m.MaqCodigo} className="border-b border-gray-200 hover:bg-gray-50">
                   <td className="px-5 py-3 text-sm">{m.MaqCodigo}</td>
                   <td className="px-5 py-3 text-sm">{m.MaqNombre}</td>
-                  <td className="px-5 py-3 text-sm">{getNombreUsuario(m.Usuario) || '–'}</td>
+                  {/* ✅ Usar m.UsuarioNombre que ya viene del JOIN en el backend */}
+                  <td className="px-5 py-3 text-sm">{m.UsuarioNombre || '–'}</td> 
                   <td className="px-5 py-3 text-sm">{formatDateToYYYYMMDDHHMMSS(m.FechaCat)}</td>
-                  <td className="px-5 py-3 text-sm">{getNombreUsuario(m.ModificadoPor) || '–'}</td>
-                  <td className="px-5 py-3 text-sm">{formatDateToYYYYMMDDHHMMSS(m.FechaModif)}</td>
+                  {/* ✅ Usar m.ModificadoPorNombre que ya viene del JOIN en el backend */}
+                  <td className="px-5 py-3 text-sm">{m.ModificadoPorNombre || '–'}</td> 
+                  {/* ✅ Asegurarse de que FechaModif se formatee correctamente, si existe */}
+                  <td className="px-5 py-3 text-sm">{formatDateToYYYYMMDDHHMMSS(m.FechaModif)}</td> 
                   <td className="px-8 py-3 text-center space-x-2 flex flex-col sm:flex-row sm:space-x-2 sm:space-y-0 space-y-2 justify-center items-center">
                     <button
                       onClick={() => irAEditar(m.MaqCodigo)}
