@@ -40,46 +40,46 @@ export default function Registro_Usuario() {
         'Tipo de blend',
         'Máquina',
         'Lista de Máquinas',
-        'Silo', // Coincide con App.jsx
-        'Lista de Silos', // Coincide con App.jsx
-        'Relación Silo-Producto', // Coincide con App.jsx
-        'Lista de Relación Silo-Producto', // Coincide con App.jsx
-        'Registro de Entrada', // Coincide con App.jsx
-        'Lista de Entradas', // Coincide con App.jsx
-        'Registro de Salida', // Coincide con App.jsx
-        'Lista de Salidas', // Coincide con App.jsx
+        'Silo',
+        'Lista de Silos',
+        'Relación Silo-Producto',
+        'Lista de Relación Silo-Producto',
+        // ✅ Permiso unificado para todas las funcionalidades de Entrada
+        'Entradas', 
+        'Registro de Salida',
+        'Lista de Salidas',
       ]
     },
     {
       grupo: 'movimientos',
       modulos: [
-        'Movimiento', // Coincide con App.jsx
-        'Pesaje', // Coincide con App.jsx
+        'Movimiento',
+        'Pesaje',
       ]
     },
     {
       grupo: 'mantenimiento',
       modulos: [
-        'Estado de movimiento', // Coincide con App.jsx
-        'Repesaje' // Coincide con App.jsx
+        'Estado de movimiento',
+        'Repesaje'
       ]
     },
     {
       grupo: 'historial',
       modulos: [
-        'Blend x cigarrillera', // Coincide con App.jsx
-        'Blend minisilo', // Coincide con App.jsx
-        'Dash depósito', // Coincide con App.jsx
-        'Dash gráfico', // Coincide con App.jsx
-        'Dash silo', // Coincide con App.jsx
-        'Movimiento tabaco', // Coincide con App.jsx
-        'Operación' // Coincide con App.jsx
+        'Blend x cigarrillera',
+        'Blend minisilo',
+        'Dash depósito',
+        'Dash gráfico',
+        'Dash silo',
+        'Movimiento tabaco',
+        'Operación'
       ]
     },
     {
       grupo: 'utilidad',
       modulos: [
-        'Cambiar contraseña' // Coincide con App.jsx
+        'Cambiar contraseña'
       ]
     }
   ];

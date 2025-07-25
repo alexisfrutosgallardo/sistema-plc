@@ -2,12 +2,13 @@
 const entryRepository = require('../repositories/entryRepository');
 
 const entryController = {
-  // Obtener todas las entradas con opción de ordenamiento
+  // Obtener todas las entradas con opción de ordenamiento y filtrado por estado
   getAllEntries: async (req, res) => {
     try {
       const sortBy = req.query.sortBy;
       const order = req.query.order;
-      const entries = await entryRepository.getAllEntries(sortBy, order);
+      const estado = req.query.estado; // Leer el parámetro de estado
+      const entries = await entryRepository.getAllEntries(sortBy, order, estado); // Pasar estado al repositorio
       res.json(entries);
     } catch (err) {
       console.error("❌ Error al obtener entradas:", err.message);
@@ -45,16 +46,20 @@ const entryController = {
   // Crear una nueva entrada
   createEntry: async (req, res) => {
     const { Fecha, NroCorte, productosSeleccionados } = req.body;
-    if (!Fecha || !NroCorte || !productosSeleccionados || productosSeleccionados.length === 0) {
-      return res.status(400).json({ error: "⚠️ Faltan campos obligatorios (Fecha, NroCorte, productos seleccionados)." });
+    // ✅ MODIFICADO: Solo validar Fecha y NroCorte para la cabecera.
+    // La validación de productosSeleccionados se maneja ahora en el frontend
+    // o se permite que sea opcional si el rol lo permite.
+    if (!Fecha || !NroCorte) {
+      return res.status(400).json({ error: "⚠️ Faltan campos obligatorios de la cabecera (Fecha, NroCorte)." });
     }
     try {
       const result = await entryRepository.createEntry(req.body);
 
-      // ✅ CAMBIO CLAVE: Guardar la última serie utilizada en esta entrada, no +1
-      if (productosSeleccionados.length > 0) {
+      // Guardar la última serie utilizada en esta entrada
+      // Solo si se enviaron productos seleccionados (es decir, no es solo una cabecera)
+      if (productosSeleccionados && productosSeleccionados.length > 0) {
         const lastSerieUsed = Number(productosSeleccionados[productosSeleccionados.length - 1].Serie);
-        await entryRepository.incrementarSerieGlobal(lastSerieUsed); // Guardar el valor exacto
+        await entryRepository.incrementarSerieGlobal(lastSerieUsed);
       }
 
       res.status(201).json(result);
@@ -67,21 +72,18 @@ const entryController = {
     }
   },
 
-  // Actualizar una entrada existente
+  // Actualizar una entrada existente (flexible para cabecera y/o detalles)
   updateEntry: async (req, res) => {
     const { entNumero } = req.params;
-    const { Fecha, NroCorte, productosSeleccionados } = req.body;
+    const entryData = req.body; // Recibimos todo el body
 
-    if (!Fecha || !NroCorte || !productosSeleccionados || productosSeleccionados.length === 0) {
-      return res.status(400).json({ error: "⚠️ Faltan campos obligatorios (Fecha, NroCorte, productos seleccionados)." });
-    }
     try {
-      const result = await entryRepository.updateEntry(entNumero, req.body);
+      const result = await entryRepository.updateEntry(entNumero, entryData);
       res.json(result);
     } catch (err) {
       console.error("❌ Error al actualizar entrada:", err.message);
       if (err.message.includes('UNIQUE constraint failed: Entrada1.NroCorte')) {
-        return res.status(409).json({ error: `El Número de Corte '${NroCorte}' ya existe para otra entrada.` });
+        return res.status(409).json({ error: `El Número de Corte '${entryData.NroCorte}' ya existe para otra entrada.` });
       }
       res.status(500).json({ error: "Error al actualizar la entrada." });
     }
@@ -130,10 +132,9 @@ const entryController = {
   // Obtener los contadores actuales (serie global)
   getEntrySeriesCounters: async (req, res) => {
     try {
-      //console.log("📣 Llamada a /entrada/series-counters recibida");
+      console.log("📣 Llamada a /entrada/series-counters recibida");
       const ultimaSerie = await entryRepository.obtenerUltimaSerie();
 
-      // Solo devolvemos globalSerie
       res.json({ globalSerie: ultimaSerie });
     } catch (err) {
       console.error("❌ Error al obtener contadores de serie:", err.message);

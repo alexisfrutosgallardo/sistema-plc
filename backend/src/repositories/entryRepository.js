@@ -2,10 +2,10 @@
 const db = require('../database'); // Importa la instancia de la base de datos
 
 const entryRepository = {
-  // Obtener todas las entradas (cabecera) con nombres de usuario y producto
-  getAllEntries: (sortBy = 'EntNumero', order = 'DESC') => {
+  // Obtener todas las entradas (cabecera) con opción de ordenamiento y filtrado por estado
+  getAllEntries: (sortBy = 'EntNumero', order = 'DESC', estado = null) => {
     return new Promise((resolve, reject) => {
-      const sql = `
+      let sql = `
         SELECT
           e.EntNumero,
           e.Fecha,
@@ -23,9 +23,17 @@ const entryRepository = {
         LEFT JOIN Usuario u ON e.Usuario = u.legajo
         LEFT JOIN Producto p ON e.ProdCodigo = p.ProdCodigo
         LEFT JOIN TipoProducto tp ON p.TipProdCodigo = tp.TipProdCodigo
-        ORDER BY ${sortBy} ${order}
       `;
-      db.all(sql, [], (err, rows) => {
+      const params = [];
+
+      if (estado) {
+        sql += ` WHERE e.Estado = ?`;
+        params.push(estado);
+      }
+
+      sql += ` ORDER BY ${sortBy} ${order}`;
+
+      db.all(sql, params, (err, rows) => {
         if (err) reject(err);
         else resolve(rows);
       });
@@ -143,7 +151,7 @@ const entryRepository = {
 
               for (let i = 0; i < productosSeleccionados.length; i++) {
                 const prod = productosSeleccionados[i];
-                const serieToUse = prod.Serie; // La serie ya viene del frontend
+                const serieToUse = prod.Serie;
 
                 const sql2 = `
                   INSERT INTO Entrada2 (EntNumero, Iten, ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat)
@@ -156,7 +164,7 @@ const entryRepository = {
                   serieToUse,
                   prod.Cantidad,
                   prod.Fecha,
-                  prod.FechaCura,
+                  FechaCura, 
                   prod.FechaIngr,
                   prod.Estado || 'Activo',
                   Usuario,
@@ -201,7 +209,7 @@ const entryRepository = {
     });
   },
 
-  // Actualizar una entrada (cabecera y detalles)
+  // Actualizar una entrada (cabecera y/o detalles)
   updateEntry: (entNumero, entryData) => {
     return new Promise((resolve, reject) => {
       const { Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, FechaCura, productosSeleccionados } = entryData;
@@ -212,27 +220,34 @@ const entryRepository = {
             return reject(beginErr);
           }
 
-          const sqlUpdateEntry = `
-            UPDATE Entrada1
-            SET Fecha = ?, NroCorte = ?, Estado = ?, Comentario = ?, FechaCat = ?, Usuario = ?, ProdCodigo = ?, FechaCura = ?
-            WHERE EntNumero = ?
-          `;
-          db.run(sqlUpdateEntry, [
-            Fecha,
-            NroCorte,
-            Estado,
-            Comentario,
-            FechaCat,
-            Usuario,
-            ProdCodigo,
-            FechaCura,
-            entNumero,
-          ], async function (err) {
-            if (err) {
-              db.run("ROLLBACK;");
-              return reject(err);
-            }
+          // Actualizar cabecera si los campos relevantes están presentes
+          if (Fecha || NroCorte || Estado || Comentario || Usuario || FechaCat || ProdCodigo || FechaCura) {
+            const sqlUpdateEntry = `
+              UPDATE Entrada1
+              SET Fecha = ?, NroCorte = ?, Estado = ?, Comentario = ?, FechaCat = ?, Usuario = ?, ProdCodigo = ?, FechaCura = ?
+              WHERE EntNumero = ?
+            `;
+            db.run(sqlUpdateEntry, [
+              Fecha,
+              NroCorte,
+              Estado,
+              Comentario,
+              FechaCat,
+              Usuario,
+              ProdCodigo,
+              FechaCura,
+              entNumero,
+            ], function (err) {
+              if (err) {
+                db.run("ROLLBACK;");
+                return reject(err);
+              }
+            });
+          }
 
+          // Actualizar detalles si productosSeleccionados están presentes
+          if (productosSeleccionados && productosSeleccionados.length > 0) {
+            // Primero, eliminar detalles existentes para esta entrada
             const sqlDeleteDetails = `DELETE FROM Entrada2 WHERE EntNumero = ?`;
             db.run(sqlDeleteDetails, [entNumero], async function (err) {
               if (err) {
@@ -252,7 +267,7 @@ const entryRepository = {
                     serieToUse,
                     detail.Cantidad,
                     detail.Fecha,
-                    detail.FechaCura,
+                    FechaCura, 
                     detail.FechaIngr,
                     detail.Estado,
                     Usuario,
@@ -273,7 +288,7 @@ const entryRepository = {
                       db.run("ROLLBACK;");
                       return reject(commitErr);
                     }
-                    resolve({ message: "✅ Entrada y detalles actualizados correctamente", EntNumero: entNumero });
+                    resolve({ message: "✅ Entrada y/o detalles actualizados correctamente", EntNumero: entNumero });
                   });
                 })
                 .catch(detailErr => {
@@ -281,13 +296,22 @@ const entryRepository = {
                   reject(detailErr);
                 });
             });
-          });
+          } else {
+            // Si no hay productosSeleccionados, significa que solo se actualizó la cabecera
+            db.run("COMMIT;", (commitErr) => {
+              if (commitErr) {
+                db.run("ROLLBACK;");
+                return reject(commitErr);
+              }
+              resolve({ message: "✅ Entrada actualizada correctamente", EntNumero: entNumero });
+            });
+          }
         });
       });
     });
   },
 
-  // ✅ Obtener la última serie registrada (del único registro con id=1)
+  // Obtener la última serie registrada (del único registro con id=1)
   obtenerUltimaSerie: () => {
     return new Promise((resolve, reject) => {
       const query = `SELECT serie FROM Parametro WHERE id = 1`;
@@ -302,7 +326,7 @@ const entryRepository = {
     });
   },
 
-  // ✅ Insertar o actualizar la serie global (sobrescribir el único registro con id=1)
+  // Insertar o actualizar la serie global (sobrescribir el único registro con id=1)
   // Solo se llama al registrar la entrada principal
   incrementarSerieGlobal: (nuevaSerie) => {
     return new Promise((resolve, reject) => {

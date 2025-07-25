@@ -1,29 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../../../config/config';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp, Trash2, Plus, ArrowUp, ArrowDown, Edit } from 'lucide-react'; // Importamos iconos, incluyendo Edit
+import { ChevronDown, ChevronUp, Trash2, Plus, ArrowUp, ArrowDown, Edit } from 'lucide-react';
 
 // Función de utilidad para formatear la fecha a YYYY-MM-DD HH:mm:ss
 const formatDateToYYYYMMDDHHMMSS = (dateString) => {
   if (!dateString) return '–';
 
   let date;
-  // Si la cadena incluye una parte de tiempo (ej. "YYYY-MM-DD HH:MM:SS"),
-  // la convertimos a formato ISO local para que new Date() la interprete correctamente.
   if (dateString.includes(' ')) {
-    date = new Date(dateString.replace(' ', 'T')); // Interpreta como hora local
+    date = new Date(dateString.replace(' ', 'T'));
   } else {
-    // Si es solo una fecha (YYYY-MM-DD), la interpretamos como fecha local
-    // agregando una parte de tiempo para asegurar que new Date() la trate como local.
-    date = new Date(`${dateString}T00:00:00`); // Interpreta como 00:00:00 del día en hora local
+    date = new Date(`${dateString}T00:00:00`);
   }
 
   if (isNaN(date.getTime())) {
     return 'Fecha inválida';
   }
 
-  // Ahora formateamos esta fecha (que ya está en la zona horaria correcta)
-  // a los componentes de la hora local del navegador.
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -36,216 +30,267 @@ const formatDateToYYYYMMDDHHMMSS = (dateString) => {
 
 export default function Lista_Entradas() {
   const [entradas, setEntradas] = useState([]);
-  const [mensaje, setMensaje] = useState('');
-  const [detalles, setDetalles] = useState({}); // Estado para almacenar los detalles de cada entrada
-  const [expandedEntradas, setExpandedEntradas] = useState({}); // Estado para controlar qué entradas están expandidas
-  const [sortColumn, setSortColumn] = useState('EntNumero'); // Estado para la columna de ordenamiento
-  const [sortDirection, setSortDirection] = useState('DESC'); // Estado para la dirección de ordenamiento
+  const [detalles, setDetalles] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [expandedRow, setExpandedRow] = useState(null);
+  const [sortBy, setSortBy] = useState('EntNumero');
+  const [sortOrder, setSortOrder] = useState('DESC');
   const navigate = useNavigate();
 
-  const fetchEntradas = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/entrada?sortBy=${sortColumn}&order=${sortDirection}`);
-      const data = await res.json();
-      if (res.ok) {
-        setEntradas(data);
-        setMensaje('');
-      } else {
-        setMensaje(`❌ Error al cargar entradas: ${data.error || 'Formato de datos inesperado.'}`);
-        console.error('Datos recibidos no son un array:', data);
-      }
-    } catch (err) {
-      console.error("❌ Error al cargar entradas:", err);
-      setMensaje('❌ No se pudo conectar al servidor o error al cargar entradas.');
-    }
-  };
+  // Obtener el usuario del localStorage para determinar el rol
+  const usuario = JSON.parse(localStorage.getItem('usuario'));
+  const userRole = usuario ? usuario.rol : null;
 
   useEffect(() => {
-    fetchEntradas();
-  }, [sortColumn, sortDirection]); // Recargar entradas cuando cambie la columna o dirección de ordenamiento
+    const fetchEntries = async () => {
+      try {
+        setLoading(true);
+        setError('');
 
-  const fetchDetalles = async (entNumero) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/entrada/${entNumero}/detalle`);
-      const data = await res.json();
-      if (res.ok) {
-        setDetalles(prev => ({ ...prev, [entNumero]: data }));
-      } else {
-        setMensaje(`❌ Error al cargar detalles: ${data.error || 'Error desconocido.'}`);
+        const queryParams = new URLSearchParams();
+        // Filtrar por estado 'Abierto' si el usuario no es admin
+        if (userRole === 'supervisor' || userRole === 'operador') {
+          queryParams.append('estado', 'Abierto');
+        }
+        queryParams.append('sortBy', sortBy);
+        queryParams.append('order', sortOrder);
+
+        const url = `${API_BASE_URL}/entrada?${queryParams.toString()}`;
+        const response = await fetch(url, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        setEntradas(data);
+      } catch (err) {
+        console.error("Error al obtener entradas:", err);
+        setError(`❌ Error al cargar las entradas: ${err.message}`);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("❌ Error al cargar detalles:", err);
-      setMensaje('❌ No se pudo conectar al servidor o error al cargar detalles.');
-    }
-  };
+    };
 
-  const toggleExpand = (entNumero) => {
-    setExpandedEntradas(prev => {
-      const newState = { ...prev, [entNumero]: !prev[entNumero] };
-      if (newState[entNumero] && !detalles[entNumero]) {
-        fetchDetalles(entNumero);
-      }
-      return newState;
-    });
-  };
+    fetchEntries();
+  }, [sortBy, sortOrder, userRole]);
 
-  const eliminarEntrada = async (entNumero) => {
-    if (!window.confirm(`¿Estás segura que quieres eliminar la entrada número ${entNumero} y todos sus detalles? Esta acción es irreversible y revertirá el stock.`)) {
-      return;
-    }
-
+  const fetchDetails = async (entNumero) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/entrada/${entNumero}`, {
-        method: 'DELETE',
+      const response = await fetch(`${API_BASE_URL}/entrada/${entNumero}/detalle`, {
+        headers: { 'Content-Type': 'application/json' },
       });
-      const data = await res.json();
-      if (res.ok) {
-        setMensaje(`✅ ${data.message}`);
-        fetchEntradas(); // Recargar la lista de entradas
-      } else {
-        setMensaje(`❌ Error: ${data.error || 'No se pudo eliminar la entrada.'}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
+      const data = await response.json();
+      setDetalles(prev => ({ ...prev, [entNumero]: data }));
     } catch (err) {
-      console.error("❌ Error al eliminar entrada:", err);
-      setMensaje('❌ No se pudo conectar al servidor para eliminar la entrada.');
+      console.error(`Error al obtener detalles para EntNumero ${entNumero}:`, err);
+      setError(`❌ Error al cargar los detalles para la entrada ${entNumero}: ${err.message}`);
     }
-    setTimeout(() => setMensaje(''), 3000);
   };
 
-  const irARegistroEntrada = () => {
-    navigate('/registro/entrada');
-  };
-
-  // ✅ NUEVA FUNCIÓN: Redirigir a la página de registro/edición con el EntNumero
-  const irAEditar = (entNumero) => {
-    navigate(`/registro/entrada?entNumero=${entNumero}`);
+  const handleToggleExpand = (entNumero) => {
+    if (expandedRow === entNumero) {
+      setExpandedRow(null);
+    } else {
+      setExpandedRow(entNumero);
+      if (!detalles[entNumero]) {
+        fetchDetails(entNumero);
+      }
+    }
   };
 
   const handleSort = (column) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'ASC' ? 'DESC' : 'ASC');
+    if (sortBy === column) {
+      setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC');
     } else {
-      setSortColumn(column);
-      setSortDirection('ASC');
+      setSortBy(column);
+      setSortOrder('ASC');
     }
   };
 
-  // Helper para renderizar el icono de ordenamiento
-  const renderSortIcon = (column) => {
-    if (sortColumn === column) {
-      return sortDirection === 'ASC' ? <ArrowUp size={16} /> : <ArrowDown size={16} />;
+  const handleDelete = async (entNumero) => {
+    if (window.confirm(`¿Estás seguro de que deseas eliminar la entrada N° ${entNumero}?`)) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/entrada/${entNumero}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Error al eliminar la entrada.');
+        }
+
+        setEntradas(entradas.filter(ent => ent.EntNumero !== entNumero));
+        setDetalles(prev => {
+          const newDetalles = { ...prev };
+          delete newDetalles[entNumero];
+          return newDetalles;
+        });
+        alert(`✅ Entrada N° ${entNumero} eliminada correctamente.`); // Usar un modal en lugar de alert
+      } catch (err) {
+        console.error("Error al eliminar entrada:", err);
+        alert(`❌ Error: ${err.message}`); // Usar un modal en lugar de alert
+      }
     }
-    return null;
   };
+
+  // ✅ Modificado: Navegación a diferentes formularios según el rol
+  const handleEdit = (entNumero) => {
+    if (userRole === 'admin') {
+      navigate(`/registro/entrada?entNumero=${entNumero}`); // Admin: formulario completo
+    } else if (userRole === 'supervisor') {
+      navigate(`/registro/entrada/cabecera?entNumero=${entNumero}`); // Supervisor: solo cabecera
+    } else if (userRole === 'operador') {
+      navigate(`/registro/entrada/detalle?entNumero=${entNumero}`); // Operador: solo detalle
+    }
+  };
+
+  // ✅ Modificado: Navegación para nueva entrada
+  const handleNewEntry = () => {
+    if (userRole === 'admin') {
+      navigate('/registro/entrada'); // Admin: formulario completo
+    } else if (userRole === 'supervisor') {
+      navigate('/registro/entrada/cabecera'); // Supervisor: solo cabecera
+    }
+    // Operador no tiene botón de nueva entrada
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500"></div>
+        <p className="ml-4 text-gray-600">Cargando entradas...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+        <strong className="font-bold">¡Error!</strong>
+        <span className="block sm:inline"> {error}</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen mx-auto p-6 bg-gray-50 shadow-lg rounded-lg mt-10">
-      <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Lista de Entradas</h2>
+    <div className="container mx-auto p-6 bg-gray-50 shadow-lg rounded-lg mt-10">
+      <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">Lista de Entradas</h1>
 
-      <div className="flex justify-end items-center mb-6">
-        <button
-          onClick={irARegistroEntrada}
-          className="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 transition-colors shadow-md text-lg font-medium flex items-center gap-2"
-        >
-          <Plus size={20} /> Nueva Entrada
-        </button>
-      </div>
-
-      {mensaje && (
-        <div className={`p-3 rounded-md text-center mb-4 ${mensaje.startsWith('✅') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-          {mensaje}
+      {/* Botón para nueva entrada */}
+      {/* Solo 'supervisor' y 'admin' pueden crear nuevas entradas */}
+      {(userRole === 'admin' || userRole === 'supervisor') && (
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={handleNewEntry}
+            className="bg-blue-600 text-white px-5 py-2 rounded-md hover:bg-blue-700 transition-colors shadow-md text-base font-medium flex items-center gap-2"
+          >
+            <Plus size={20} /> Nueva Entrada
+          </button>
         </div>
       )}
 
-      <div className="overflow-x-auto bg-white shadow-md rounded-lg">
-        <table className="min-w-full leading-normal">
-          <thead>
-            <tr className="bg-gray-100 border-b-2 border-gray-200">
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('EntNumero')}>
-                <div className="flex items-center">Número {renderSortIcon('EntNumero')}</div>
+      <div className="overflow-x-auto relative shadow-md sm:rounded-lg">
+        <table className="w-full text-sm text-left text-gray-500">
+          <thead className="text-xs text-gray-700 uppercase bg-gray-200">
+            <tr>
+              <th scope="col" className="p-2"></th> {/* Columna para expandir/colapsar */}
+              <th scope="col" className="px-6 py-3 cursor-pointer" onClick={() => handleSort('EntNumero')}>
+                N° Entrada
+                {sortBy === 'EntNumero' && (sortOrder === 'ASC' ? <ArrowUp className="inline ml-1" size={16} /> : <ArrowDown className="inline ml-1" size={16} />)}
               </th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('Fecha')}>
-                <div className="flex items-center">Fecha {renderSortIcon('Fecha')}</div>
+              <th scope="col" className="px-6 py-3 cursor-pointer" onClick={() => handleSort('Fecha')}>
+                Fecha
+                {sortBy === 'Fecha' && (sortOrder === 'ASC' ? <ArrowUp className="inline ml-1" size={16} /> : <ArrowDown className="inline ml-1" size={16} />)}
               </th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('NroCorte')}>
-                <div className="flex items-center">Nro. Corte {renderSortIcon('NroCorte')}</div>
+              <th scope="col" className="px-6 py-3 cursor-pointer" onClick={() => handleSort('NroCorte')}>
+                N° Corte
+                {sortBy === 'NroCorte' && (sortOrder === 'ASC' ? <ArrowUp className="inline ml-1" size={16} /> : <ArrowDown className="inline ml-1" size={16} />)}
               </th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('Estado')}>
-                <div className="flex items-center">Estado {renderSortIcon('Estado')}</div>
+              <th scope="col" className="px-6 py-3 cursor-pointer" onClick={() => handleSort('Estado')}>
+                Estado
+                {sortBy === 'Estado' && (sortOrder === 'ASC' ? <ArrowUp className="inline ml-1" size={16} /> : <ArrowDown className="inline ml-1" size={16} />)}
               </th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('UsuarioNombre')}>
-                <div className="flex items-center">Usuario {renderSortIcon('UsuarioNombre')}</div>
+              <th scope="col" className="px-6 py-3">Comentario</th>
+              <th scope="col" className="px-6 py-3 cursor-pointer" onClick={() => handleSort('FechaCat')}>
+                Fecha Carga
+                {sortBy === 'FechaCat' && (sortOrder === 'ASC' ? <ArrowUp className="inline ml-1" size={16} /> : <ArrowDown className="inline ml-1" size={16} />)}
               </th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('ProdPrincipalNombre')}>
-                <div className="flex items-center">Producto {renderSortIcon('ProdPrincipalNombre')}</div>
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('Comentario')}>
-                <div className="flex items-center">Comentario {renderSortIcon('Comentario')}</div>
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('FechaCat')}>
-                <div className="flex items-center">Fecha de Carga {renderSortIcon('FechaCat')}</div>
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200" onClick={() => handleSort('FechaCura')}>
-                <div className="flex items-center">Fecha de Cura {renderSortIcon('FechaCura')}</div>
-              </th>
-              <th className="px-5 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan="2">Acciones</th> {/* Colspan ajustado para incluir Editar */}
-         
+              <th scope="col" className="px-6 py-3">Usuario</th>
+              <th scope="col" className="px-6 py-3">Producto Principal</th>
+              <th scope="col" className="px-6 py-3">Fecha Cura (Cabecera)</th>
+              <th scope="col" className="px-6 py-3 text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {entradas.length > 0 ? (
               entradas.map((ent) => (
                 <React.Fragment key={ent.EntNumero}>
-                  <tr className="border-b border-gray-200 hover:bg-gray-50">
-                    <td className="px-5 py-3 text-sm">{ent.EntNumero}</td>
-                    <td className="px-5 py-3 text-sm">{formatDateToYYYYMMDDHHMMSS(ent.Fecha)}</td>
-                    <td className="px-5 py-3 text-sm">{ent.NroCorte}</td>
-                    <td className="px-5 py-3 text-sm">{ent.Estado}</td>
-                    <td className="px-5 py-3 text-sm">{ent.UsuarioNombre}</td>
-                    <td className="px-5 py-3 text-sm">{ent.ProdPrincipalNombre} ({ent.ProdPrincipalTipoNombre})</td>
-                    <td className="px-5 py-3 text-sm">{ent.Comentario}</td>
-                    <td className="px-5 py-3 text-sm">{formatDateToYYYYMMDDHHMMSS(ent.FechaCat)}</td>
-                    <td className="px-5 py-3 text-sm">{formatDateToYYYYMMDDHHMMSS(ent.FechaCura)}</td>
-                    <td className="px-5 py-3 text-center space-x-2 flex flex-col sm:flex-row sm:space-x-2 sm:space-y-0 space-y-2 justify-center items-center">
-                      {/* ✅ Botón de Editar */}
+                  <tr className="bg-white border-b hover:bg-gray-100">
+                    <td className="p-2">
                       <button
-                        onClick={() => irAEditar(ent.EntNumero)}
-                        className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors text-sm w-full sm:w-auto flex items-center justify-center gap-1"
+                        onClick={() => handleToggleExpand(ent.EntNumero)}
+                        className="text-blue-600 hover:text-blue-800"
+                        aria-expanded={expandedRow === ent.EntNumero}
+                        aria-controls={`details-${ent.EntNumero}`}
                       >
-                        <Edit size={16} /> Editar
-                      </button>
-                      <button
-                        onClick={() => eliminarEntrada(ent.EntNumero)}
-                        className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600 transition-colors text-sm flex items-center justify-center mx-auto w-full sm:w-auto"
-                      >
-                        <Trash2 size={16} /> Eliminar
+                        {expandedRow === ent.EntNumero ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                       </button>
                     </td>
-                    <td className="px-5 py-3 text-center">
-                      <button
-                        onClick={() => toggleExpand(ent.EntNumero)}
-                        className="text-blue-600 hover:text-blue-800 transition-colors"
-                      >
-                        {expandedEntradas[ent.EntNumero] ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                      </button>
+                    <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">{ent.EntNumero}</td>
+                    <td className="px-6 py-4">{formatDateToYYYYMMDDHHMMSS(ent.Fecha)}</td>
+                    <td className="px-6 py-4">{ent.NroCorte}</td>
+                    <td className="px-6 py-4">{ent.Estado}</td>
+                    <td className="px-6 py-4">{ent.Comentario || '-'}</td>
+                    <td className="px-6 py-4">{formatDateToYYYYMMDDHHMMSS(ent.FechaCat)}</td>
+                    <td className="px-6 py-4">{ent.UsuarioNombre || ent.Usuario}</td>
+                    <td className="px-6 py-4">{ent.ProdPrincipalNombre ? `${ent.ProdPrincipalNombre} (${ent.TipProdNombre})` : '-'}</td>
+                    <td className="px-6 py-4">{formatDateToYYYYMMDDHHMMSS(ent.FechaCura) || '-'}</td>
+                    <td className="px-6 py-4 text-center">
+                      {/* Botones de acción condicionales por rol */}
+                      {(userRole === 'admin' || userRole === 'supervisor' || userRole === 'operador') && (
+                        <button
+                          onClick={() => handleEdit(ent.EntNumero)}
+                          className="font-medium text-indigo-600 hover:text-indigo-900 mr-3"
+                          title="Editar Entrada"
+                        >
+                          <Edit size={20} />
+                        </button>
+                      )}
+                      {/* Solo Admin puede eliminar */}
+                      {userRole === 'admin' && (
+                        <button
+                          onClick={() => handleDelete(ent.EntNumero)}
+                          className="font-medium text-red-600 hover:text-red-900"
+                          title="Eliminar Entrada"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      )}
                     </td>
                   </tr>
-                  {expandedEntradas[ent.EntNumero] && detalles[ent.EntNumero] && (
-                    <tr>
-                      <td colSpan="11" className="p-0"> {/* ✅ Colspan ajustado a 11 */}
-                        <div className="bg-gray-100 p-4 border-t border-gray-200">
-                          <h4 className="font-semibold text-gray-700 mb-3 ml-2">Detalles de la Entrada {ent.EntNumero}:</h4>
-                          <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-inner">
-                            <thead className="bg-gray-200">
+                  {expandedRow === ent.EntNumero && detalles[ent.EntNumero] && (
+                    <tr className="bg-gray-50">
+                      <td colSpan="11" className="p-4">
+                        <h4 className="text-lg font-semibold text-gray-700 mb-3">Detalles de Productos:</h4>
+                        <div className="overflow-x-auto rounded-lg border border-gray-200">
+                          <table className="min-w-full text-xs text-left text-gray-600">
+                            <thead className="bg-gray-100">
                               <tr>
-                                <th className="p-2 text-center text-xs font-semibold text-gray-600 uppercase">Ítem</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Producto</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Serie</th>
-                                <th className="p-2 text-right text-xs font-semibold text-gray-600 uppercase">Cantidad</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Fecha</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Fecha Cura</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Fecha Ingreso</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
+                                <th className="p-2 text-center">Ítem</th>
+                                <th className="p-2">Producto</th>
+                                <th className="p-2">Serie</th>
+                                <th className="p-2 text-right">Cantidad</th>
+                                <th className="p-2">Fecha</th>
+                                <th className="p-2">Fecha Cura</th>
+                                <th className="p-2">Fecha Ingreso</th>
+                                <th className="p-2">Estado</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -271,7 +316,7 @@ export default function Lista_Entradas() {
               ))
             ) : (
               <tr>
-                <td colSpan="11" className="text-center text-gray-500 py-4"> {/* ✅ Colspan ajustado a 11 */}
+                <td colSpan="11" className="text-center text-gray-500 py-4">
                   No hay entradas registradas.
                 </td>
               </tr>

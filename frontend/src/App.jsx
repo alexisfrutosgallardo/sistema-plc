@@ -30,6 +30,8 @@ import Lista_Silos from './features/silos/components/Lista_Silos';
 
 import Registro_Entrada from './features/entries/components/Registro_Entrada';
 import Lista_Entradas from './features/entries/components/Lista_Entradas';
+import Registro_Entrada_Cabecera from './features/entries/components/Registro_Entrada_Cabecera';
+import Registro_Entrada_Detalle from './features/entries/components/Registro_Entrada_Detalle';
 
 import Registro_RelSiloBlend from './features/relsilo-blend/components/Registro_RelSiloBlend'; 
 import Lista_RelSiloBlend from './features/relsilo-blend/components/Lista_RelSiloBlend'; 
@@ -169,6 +171,17 @@ function App() {
             <Route path="registro/lista-entradas" element={
               <ProtectedRoute usuario={usuario} requiredPermission="registro" specificPermission="Lista de Entradas">
                 <Lista_Entradas />
+              </ProtectedRoute>
+            } />
+                        {/* ✅ NUEVAS RUTAS PARA FORMULARIOS ESPECÍFICOS POR ROL */}
+            <Route path="registro/entrada/cabecera" element={
+              <ProtectedRoute usuario={usuario} requiredPermission="registro" specificPermission="Entradas">
+                <Registro_Entrada_Cabecera usuario={usuario} /> {/* Solo cabecera para Supervisor */}
+              </ProtectedRoute>
+            } />
+            <Route path="registro/entrada/detalle" element={
+              <ProtectedRoute usuario={usuario} requiredPermission="registro" specificPermission="Entradas">
+                <Registro_Entrada_Detalle usuario={usuario} /> {/* Solo detalle para Operador */}
               </ProtectedRoute>
             } />
             <Route path="registro/silo" element={

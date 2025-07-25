@@ -22,45 +22,47 @@ function getFechaHoraLocal(date = new Date()) {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-// Función para sumar horas a una fecha (para FechaCura de cabecera)
-function addHoursToDate(dateString, hoursToAdd) {
-  if (!dateString || hoursToAdd === undefined || hoursToAdd === null || isNaN(parseInt(hoursToAdd))) return '';
-  const date = new Date(dateString);
-  date.setHours(date.getHours() + parseInt(hoursToAdd, 10));
-  return getFechaHoraLocal(date);
-}
-
-export default function Registro_Entrada({ usuario }) { // Este componente ahora es principalmente para Admin
+export default function Registro_Entrada_Detalle({ usuario }) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const entNumeroParam = queryParams.get('entNumero');
 
+  // El rol del usuario se pasa como prop o se obtiene de localStorage
+  const userRole = usuario ? usuario.rol : null;
+
   const [formCabecera, setFormCabecera] = useState({
-    Fecha: getFechaLocal(),
+    Fecha: '',
     NroCorte: '',
-    Estado: 'Abierto',
+    Estado: '',
     Comentario: '',
-    FechaCat: getFechaHoraLocal(),
+    FechaCat: '',
     ProdCodigo: '',
-    FechaCura: '',
-    Usuario: usuario ? usuario.legajo : '',
+    FechaCura: '', // FechaCura de la cabecera, se usará para los detalles
+    Usuario: '',
   });
 
   const [productosDisponibles, setProductosDisponibles] = useState([]);
   const [productosSeleccionados, setProductosSeleccionados] = useState([]);
   const [mensaje, setMensaje] = useState('');
   const [tipoMensaje, setTipoMensaje] = useState('');
-  const [nroCorteError, setNroCorteError] = useState('');
-  const [editando, setEditando] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [lastRegisteredGlobalSerie, setLastRegisteredGlobalSerie] = useState(0);
 
-  // Cargar datos iniciales
+  // Cargar datos de la entrada (cabecera y detalles)
   useEffect(() => {
     const fetchInitialData = async () => {
+      if (!entNumeroParam) {
+        setLoading(false);
+        setTipoMensaje('error');
+        setMensaje('❌ Número de entrada no especificado para editar detalles.');
+        return;
+      }
+
       try {
-        // Cargar productos disponibles
+        setLoading(true);
+        // Cargar productos disponibles (necesario para el select de Producto Principal en detalle)
         const productosRes = await fetch(`${API_BASE_URL}/producto`, {
           headers: { 'Content-Type': 'application/json' },
         });
@@ -70,113 +72,58 @@ export default function Registro_Entrada({ usuario }) { // Este componente ahora
         const productosData = await productosRes.json();
         setProductosDisponibles(productosData);
 
-        // Obtener la última serie global registrada (solo si es una nueva entrada)
-        if (!entNumeroParam) {
-          const resCounters = await fetch(`${API_BASE_URL}/entrada/series-counters`, {
-            headers: { 'Content-Type': 'application/json' },
-          });
-          const dataCounters = await resCounters.json();
-          if (resCounters.ok) {
-            setLastRegisteredGlobalSerie(dataCounters.globalSerie);
-          } else {
-            console.error("❌ Error al obtener contadores iniciales:", dataCounters.error || 'Error desconocido');
-            setTipoMensaje('error');
-            setMensaje('❌ Error al cargar los contadores iniciales de serie.');
-          }
+        // Obtener la cabecera de la entrada
+        const resCabecera = await fetch(`${API_BASE_URL}/entrada/${entNumeroParam}`);
+        if (!resCabecera.ok) throw new Error('Error al cargar la cabecera de la entrada.');
+        const dataCabecera = await resCabecera.json();
+        setFormCabecera(dataCabecera); // Cargar todos los datos de la cabecera
+
+        // Obtener los detalles de la entrada
+        const resDetalles = await fetch(`${API_BASE_URL}/entrada/${entNumeroParam}/detalle`);
+        if (!resDetalles.ok) throw new Error('Error al cargar los detalles de la entrada.');
+        const dataDetalles = await resDetalles.json();
+        
+        setProductosSeleccionados(dataDetalles.map(det => ({
+          ProdCodigo: det.ProdCodigo,
+          Serie: det.Serie,
+          Cantidad: det.Cantidad,
+          Fecha: getFechaLocal(new Date(det.Fecha)),
+          FechaCura: getFechaLocal(new Date(det.FechaCura)), // FechaCura de detalle
+          FechaIngr: det.FechaIngr ? getFechaLocal(new Date(det.FechaIngr)) : '',
+          Estado: det.Estado,
+        })));
+
+        // Obtener la última serie global para generar nuevas series temporales
+        const resCounters = await fetch(`${API_BASE_URL}/entrada/series-counters`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const dataCounters = await resCounters.json();
+        if (resCounters.ok) {
+          setLastRegisteredGlobalSerie(dataCounters.globalSerie);
+        } else {
+          console.error("❌ Error al obtener contadores iniciales:", dataCounters.error || 'Error desconocido');
+          setTipoMensaje('error');
+          setMensaje('❌ Error al cargar los contadores iniciales de serie.');
         }
 
-        if (entNumeroParam) {
-          setEditando(true);
-          const resCabecera = await fetch(`${API_BASE_URL}/entrada/${entNumeroParam}`);
-          if (!resCabecera.ok) throw new Error('Error al cargar la cabecera de la entrada.');
-          const dataCabecera = await resCabecera.json();
-
-          const resDetalles = await fetch(`${API_BASE_URL}/entrada/${entNumeroParam}/detalle`);
-          if (!resDetalles.ok) throw new Error('Error al cargar los detalles de la entrada.');
-          const dataDetalles = await resDetalles.json();
-          
-          setProductosSeleccionados(dataDetalles.map(det => ({
-            ProdCodigo: det.ProdCodigo,
-            Serie: det.Serie,
-            Cantidad: det.Cantidad,
-            Fecha: getFechaLocal(new Date(det.Fecha)),
-            FechaCura: getFechaLocal(new Date(det.FechaCura)),
-            FechaIngr: det.FechaIngr ? getFechaLocal(new Date(det.FechaIngr)) : '',
-            Estado: det.Estado,
-          })));
-
-          setFormCabecera(prev => ({
-            ...prev,
-            Fecha: getFechaLocal(new Date(dataCabecera.Fecha)),
-            NroCorte: dataCabecera.NroCorte,
-            Estado: dataCabecera.Estado,
-            Comentario: dataCabecera.Comentario,
-            FechaCat: dataCabecera.FechaCat,
-            Usuario: dataCabecera.Usuario,
-            ProdCodigo: dataCabecera.ProdCodigo,
-            FechaCura: dataCabecera.FechaCura || '',
-          }));
-        }
       } catch (err) {
         console.error("Error al cargar datos iniciales:", err);
         setTipoMensaje('error');
         setMensaje(`❌ Error al cargar datos: ${err.message}`);
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchInitialData();
   }, [entNumeroParam, usuario]);
 
-  // useEffect para actualizar FechaCura de la cabecera usando la fecha y hora actual
-  useEffect(() => {
-    if (formCabecera.ProdCodigo && productosDisponibles.length > 0) {
-      const selectedProduct = productosDisponibles.find(p => p.ProdCodigo === formCabecera.ProdCodigo);
-      if (selectedProduct && selectedProduct.HorasCura !== undefined) {
-        const now = new Date();
-        const calculatedFechaCura = addHoursToDate(getFechaHoraLocal(now), selectedProduct.HorasCura);
-        setFormCabecera(prev => ({ ...prev, FechaCura: calculatedFechaCura }));
-      } else {
-        setFormCabecera(prev => ({ ...prev, FechaCura: '' }));
-      }
-    } else {
-      setFormCabecera(prev => ({ ...prev, FechaCura: '' }));
-    }
-  }, [formCabecera.ProdCodigo, productosDisponibles]);
-
-  // Actualizar el usuario en formCabecera si cambia
+  // Actualizar el usuario en formCabecera si cambia (solo para fines de visualización si es necesario)
   useEffect(() => {
     if (usuario && usuario.legajo) {
       setFormCabecera(prev => ({ ...prev, Usuario: usuario.legajo }));
     }
   }, [usuario]);
-
-  const handleCabeceraChange = async e => {
-    const { name, value } = e.target;
-    setFormCabecera(prev => ({ ...prev, [name]: value }));
-
-    if (name === 'NroCorte' && value.trim() !== '') {
-      if (!editando || (editando && value.trim() !== formCabecera.NroCorte)) {
-        try {
-          const res = await fetch(`${API_BASE_URL}/entrada/check-nrocorte/${value.trim()}`, {
-            headers: { 'Content-Type': 'application/json' },
-          });
-          const data = await res.json();
-          if (data.exists) {
-            setNroCorteError(`⚠️ El Número de Corte '${value.trim()}' ya existe.`);
-          } else {
-            setNroCorteError('');
-          }
-        } catch (err) {
-          console.error("Error al verificar NroCorte:", err);
-          setNroCorteError('Error al verificar el número de corte.');
-        }
-      } else {
-        setNroCorteError('');
-      }
-    } else if (name === 'NroCorte' && value.trim() === '') {
-      setNroCorteError('');
-    }
-  };
 
   const handleAgregarProducto = () => {
     if (!formCabecera.ProdCodigo) {
@@ -194,11 +141,11 @@ export default function Registro_Entrada({ usuario }) { // Este componente ahora
     setProductosSeleccionados(prev => [
       ...prev,
       {
-        ProdCodigo: formCabecera.ProdCodigo,
+        ProdCodigo: formCabecera.ProdCodigo, // Usa el ProdCodigo de la cabecera
         Serie: newSerie,
         Cantidad: '',
         Fecha: getFechaLocal(),
-        FechaCura: formCabecera.FechaCura,
+        FechaCura: formCabecera.FechaCura, // ✅ Usa FechaCura de la cabecera
         FechaIngr: '',
         Estado: 'Activo',
       }
@@ -229,21 +176,6 @@ export default function Registro_Entrada({ usuario }) { // Este componente ahora
       return;
     }
 
-    const { Fecha, NroCorte, ProdCodigo, FechaCura } = formCabecera;
-    if (!Fecha || !NroCorte || !ProdCodigo || !FechaCura) {
-        setTipoMensaje('error');
-        setMensaje('⚠️ Por favor, complete todos los campos obligatorios de la cabecera (Fecha, Número de Corte, Producto Principal, Fecha Cura).');
-        setTimeout(() => setMensaje(''), 4000);
-        return;
-    }
-
-    if (nroCorteError) {
-      setTipoMensaje('error');
-      setMensaje('⚠️ El Número de Corte ingresado ya existe. Por favor, corrija el error.');
-      setTimeout(() => setMensaje(''), 4000);
-      return;
-    }
-
     if (productosSeleccionados.length === 0) {
       setTipoMensaje('error');
       setMensaje('⚠️ Debe agregar al menos un producto a la entrada.');
@@ -260,60 +192,43 @@ export default function Registro_Entrada({ usuario }) { // Este componente ahora
         }
     }
 
+    // Payload solo con datos de detalle, pero incluyendo la cabecera para que el PUT funcione
     const payload = {
-      ...formCabecera,
-      Estado: editando ? formCabecera.Estado : 'Abierto',
-      FechaCat: getFechaHoraLocal(),
-      Usuario: usuario.legajo,
+      // Incluir los datos de la cabecera (de solo lectura) para que el backend los reciba
+      // y pueda propagar FechaCura a los detalles.
+      Fecha: formCabecera.Fecha,
+      NroCorte: formCabecera.NroCorte,
+      Estado: formCabecera.Estado,
+      Comentario: formCabecera.Comentario,
+      FechaCat: getFechaHoraLocal(), // Actualizar FechaCat al guardar
+      Usuario: usuario.legajo, // El usuario que realiza la modificación
+      ProdCodigo: formCabecera.ProdCodigo,
+      FechaCura: formCabecera.FechaCura, // FechaCura de la cabecera
       productosSeleccionados: productosSeleccionados.map(p => ({
         ...p,
         Cantidad: parseFloat(p.Cantidad),
         Iten: productosSeleccionados.indexOf(p) + 1,
-        FechaCura: formCabecera.FechaCura,
+        FechaCura: formCabecera.FechaCura, // Asegurar que FechaCura del detalle sea la de la cabecera
       }))
     };
 
     try {
-      let res;
-      let data;
-      let url = '';
-      let method = '';
-
-      if (editando) {
-        url = `${API_BASE_URL}/entrada/${entNumeroParam}`;
-        method = 'PUT';
-      } else {
-        url = `${API_BASE_URL}/entrada`;
-        method = 'POST';
-      }
-
-      res = await fetch(url, {
-        method: method,
+      const res = await fetch(`${API_BASE_URL}/entrada/${entNumeroParam}`, {
+        method: 'PUT', // Siempre PUT para actualizar detalles de una entrada existente
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      data = await res.json();
+      const data = await res.json();
 
-      if (!res.ok) throw new Error(data.error || 'Error desconocido al procesar la entrada.');
+      if (!res.ok) throw new Error(data.error || 'Error desconocido al actualizar la entrada.');
       
       setTipoMensaje('success');
       setMensaje(data.message);
       
-      // Limpiar formulario y reiniciar estados después de éxito
-      setFormCabecera({
-        Fecha: getFechaLocal(),
-        NroCorte: '',
-        Estado: 'Abierto',
-        Comentario: '',
-        FechaCat: getFechaHoraLocal(),
-        ProdCodigo: '',
-        FechaCura: '',
-        Usuario: usuario ? usuario.legajo : '',
-      });
-      setProductosSeleccionados([]);
-      setEditando(false);
-      setLastRegisteredGlobalSerie(0);
-
+      // La serie global se actualiza en el backend al guardar la entrada.
+      // Aquí solo limpiamos los estados para una posible nueva edición.
+      setProductosSeleccionados([]); // Limpiar para que el usuario pueda empezar de nuevo si lo desea
+      
       setTimeout(() => {
         setMensaje('');
         navigate('/registro/lista-entradas');
@@ -331,99 +246,50 @@ export default function Registro_Entrada({ usuario }) { // Este componente ahora
     return productosDisponibles.find(p => p.ProdCodigo === formCabecera.ProdCodigo);
   }, [formCabecera.ProdCodigo, productosDisponibles]);
 
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500"></div>
+        <p className="ml-4 text-gray-600">Cargando detalles de entrada...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto p-6 bg-gray-50 shadow-lg rounded-lg mt-10">
       <h2 className="text-3xl font-bold mb-6 text-gray-800 text-center">
-        {editando ? 'Editar Entrada Completa (Admin)' : 'Registro de Nueva Entrada (Admin)'}
+        Editar Detalles de Entrada N° {entNumeroParam}
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 rounded-lg shadow-md">
-        {/* Sección de Cabecera de Entrada */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Sección de Cabecera de Entrada (Solo Lectura) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-100 p-4 rounded-md border border-gray-200">
+          <p className="md:col-span-2 text-lg font-semibold text-gray-700 mb-2">Información de Cabecera (Solo Lectura)</p>
           <div>
-            <label htmlFor="Fecha" className="block text-sm font-medium text-gray-700">Fecha:</label>
-            <input
-              type="date"
-              id="Fecha"
-              name="Fecha"
-              value={formCabecera.Fecha}
-              onChange={handleCabeceraChange}
-              className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              required
-            />
+            <label className="block text-sm font-medium text-gray-700">Fecha:</label>
+            <p className="mt-1 block w-full p-2 bg-gray-200 rounded-md">{getFechaLocal(new Date(formCabecera.Fecha))}</p>
           </div>
           <div>
-            <label htmlFor="NroCorte" className="block text-sm font-medium text-gray-700">Número de Corte:</label>
-            <input
-              type="text"
-              id="NroCorte"
-              name="NroCorte"
-              placeholder="Ej: C-001"
-              value={formCabecera.NroCorte}
-              onChange={handleCabeceraChange}
-              className={`mt-1 block w-full p-2 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${nroCorteError ? 'border-red-500' : 'border-gray-300'}`}
-              required
-              readOnly={editando}
-            />
-            {nroCorteError && <p className="text-red-500 text-xs mt-1">{nroCorteError}</p>}
+            <label className="block text-sm font-medium text-gray-700">Número de Corte:</label>
+            <p className="mt-1 block w-full p-2 bg-gray-200 rounded-md">{formCabecera.NroCorte}</p>
           </div>
-          {editando && (
-            <div>
-              <label htmlFor="Estado" className="block text-sm font-medium text-gray-700">Estado:</label>
-              <select
-                id="Estado"
-                name="Estado"
-                value={formCabecera.Estado}
-                onChange={handleCabeceraChange}
-                className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                required
-              >
-                <option value="Abierto">Abierto</option>
-                <option value="Cerrado">Cerrado</option>
-                <option value="Anulado">Anulado</option>
-              </select>
-            </div>
-          )}
-          <div className="md:col-span-1">
-            <label htmlFor="ProdCodigo" className="block text-sm font-medium text-gray-700">Producto Principal:</label>
-            <select
-              id="ProdCodigo"
-              name="ProdCodigo"
-              value={formCabecera.ProdCodigo}
-              onChange={handleCabeceraChange}
-              className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              required
-            >
-              <option value="">Seleccione un producto principal</option>
-              {productosDisponibles.map(p => (
-                <option key={p.ProdCodigo} value={p.ProdCodigo}>
-                  {p.ProdNombre} ({p.TipProdNombre})
-                </option>
-              ))}
-            </select>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Estado:</label>
+            <p className="mt-1 block w-full p-2 bg-gray-200 rounded-md">{formCabecera.Estado}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Producto Principal:</label>
+            <p className="mt-1 block w-full p-2 bg-gray-200 rounded-md">
+              {selectedMainProduct ? `${selectedMainProduct.ProdNombre} (${selectedMainProduct.TipProdNombre})` : 'Cargando...'}
+            </p>
           </div>
           <div className="mb-4">
-            <label className="block text-gray-700 font-semibold mb-2">Fecha Cura:</label>
-            <input
-              type="text"
-              value={formCabecera.FechaCura}
-              disabled
-              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-700"
-            />
+            <label className="block text-gray-700 font-semibold mb-2">Fecha Cura (Cabecera):</label>
+            <p className="w-full px-4 py-2 bg-gray-200 rounded-md">{formCabecera.FechaCura}</p>
           </div>
-
-
           <div className="md:col-span-2">
-            <label htmlFor="Comentario" className="block text-sm font-medium text-gray-700">Comentario:</label>
-            <textarea
-              id="Comentario"
-              name="Comentario"
-              placeholder="Comentarios adicionales sobre la entrada"
-              value={formCabecera.Comentario}
-              onChange={handleCabeceraChange}
-              rows="2"
-              className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            ></textarea>
+            <label className="block text-sm font-medium text-gray-700">Comentario:</label>
+            <p className="mt-1 block w-full p-2 bg-gray-200 rounded-md">{formCabecera.Comentario || '-'}</p>
           </div>
         </div>
 
@@ -549,7 +415,7 @@ export default function Registro_Entrada({ usuario }) { // Este componente ahora
             type="submit"
             className="w-full max-w-xs bg-blue-600 text-white py-3 px-6 rounded-md shadow-lg text-lg font-semibold hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            {editando ? 'Actualizar Entrada' : 'Registrar Entrada'}
+            Actualizar Detalles
           </button>
         </div>
 
