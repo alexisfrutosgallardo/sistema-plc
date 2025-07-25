@@ -7,8 +7,8 @@ const entryController = {
     try {
       const sortBy = req.query.sortBy;
       const order = req.query.order;
-      const estado = req.query.estado; // Leer el parámetro de estado
-      const entries = await entryRepository.getAllEntries(sortBy, order, estado); // Pasar estado al repositorio
+      const estado = req.query.estado;
+      const entries = await entryRepository.getAllEntries(sortBy, order, estado);
       res.json(entries);
     } catch (err) {
       console.error("❌ Error al obtener entradas:", err.message);
@@ -46,17 +46,12 @@ const entryController = {
   // Crear una nueva entrada
   createEntry: async (req, res) => {
     const { Fecha, NroCorte, productosSeleccionados } = req.body;
-    // ✅ MODIFICADO: Solo validar Fecha y NroCorte para la cabecera.
-    // La validación de productosSeleccionados se maneja ahora en el frontend
-    // o se permite que sea opcional si el rol lo permite.
     if (!Fecha || !NroCorte) {
       return res.status(400).json({ error: "⚠️ Faltan campos obligatorios de la cabecera (Fecha, NroCorte)." });
     }
     try {
       const result = await entryRepository.createEntry(req.body);
 
-      // Guardar la última serie utilizada en esta entrada
-      // Solo si se enviaron productos seleccionados (es decir, no es solo una cabecera)
       if (productosSeleccionados && productosSeleccionados.length > 0) {
         const lastSerieUsed = Number(productosSeleccionados[productosSeleccionados.length - 1].Serie);
         await entryRepository.incrementarSerieGlobal(lastSerieUsed);
@@ -75,10 +70,18 @@ const entryController = {
   // Actualizar una entrada existente (flexible para cabecera y/o detalles)
   updateEntry: async (req, res) => {
     const { entNumero } = req.params;
-    const entryData = req.body; // Recibimos todo el body
+    const { Estado, ...entryData } = req.body; // Extraer Estado para validación específica
 
     try {
-      const result = await entryRepository.updateEntry(entNumero, entryData);
+      // ✅ Validación para cerrar la operación: Solo si se intenta cambiar a 'Cerrado'
+      if (Estado === 'Cerrado') {
+        const hasDetails = await entryRepository.checkIfEntryHasDetails(entNumero);
+        if (!hasDetails) {
+          return res.status(400).json({ error: "❌ No se puede cerrar la operación sin tener productos de detalle cargados." });
+        }
+      }
+
+      const result = await entryRepository.updateEntry(entNumero, req.body); // Pasar el body completo
       res.json(result);
     } catch (err) {
       console.error("❌ Error al actualizar entrada:", err.message);
