@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../../../config/config';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CheckCircle2 } from 'lucide-react';
@@ -251,10 +251,6 @@ export default function Registro_Entrada_Cabecera({ usuario }) {
       setTimeout(() => setMensaje(''), 4000);
     }
   };
-
-  const selectedMainProduct = useMemo(() => {
-    return productosDisponibles.find(p => p.ProdCodigo === formCabecera.ProdCodigo);
-  }, [formCabecera.ProdCodigo, productosDisponibles]);
 
   return (
     <div className="max-w-4xl mx-auto p-6 bg-gray-50 shadow-lg rounded-lg mt-10">

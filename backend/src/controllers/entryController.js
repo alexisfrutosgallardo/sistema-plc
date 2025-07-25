@@ -135,7 +135,7 @@ const entryController = {
   // Obtener los contadores actuales (serie global)
   getEntrySeriesCounters: async (req, res) => {
     try {
-      console.log("📣 Llamada a /entrada/series-counters recibida");
+      //console.log("📣 Llamada a /entrada/series-counters recibida");
       const ultimaSerie = await entryRepository.obtenerUltimaSerie();
 
       res.json({ globalSerie: ultimaSerie });
