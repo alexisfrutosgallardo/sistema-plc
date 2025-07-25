@@ -28,7 +28,6 @@ export default function Registro_Entrada_Detalle({ usuario }) {
   const queryParams = new URLSearchParams(location.search);
   const entNumeroParam = queryParams.get('entNumero');
 
-  // El rol del usuario se pasa como prop o se obtiene de localStorage
   const userRole = usuario ? usuario.rol : null;
 
   const [formCabecera, setFormCabecera] = useState({
@@ -38,7 +37,7 @@ export default function Registro_Entrada_Detalle({ usuario }) {
     Comentario: '',
     FechaCat: '',
     ProdCodigo: '',
-    FechaCura: '', // FechaCura de la cabecera, se usará para los detalles
+    FechaCura: '',
     Usuario: '',
   });
 
@@ -145,7 +144,7 @@ export default function Registro_Entrada_Detalle({ usuario }) {
         Serie: newSerie,
         Cantidad: '',
         Fecha: getFechaLocal(),
-        FechaCura: formCabecera.FechaCura, // ✅ Usa FechaCura de la cabecera
+        FechaCura: formCabecera.FechaCura, // Usa FechaCura de la cabecera
         FechaIngr: '',
         Estado: 'Activo',
       }
@@ -225,9 +224,7 @@ export default function Registro_Entrada_Detalle({ usuario }) {
       setTipoMensaje('success');
       setMensaje(data.message);
       
-      // La serie global se actualiza en el backend al guardar la entrada.
-      // Aquí solo limpiamos los estados para una posible nueva edición.
-      setProductosSeleccionados([]); // Limpiar para que el usuario pueda empezar de nuevo si lo desea
+      setProductosSeleccionados([]);
       
       setTimeout(() => {
         setMensaje('');

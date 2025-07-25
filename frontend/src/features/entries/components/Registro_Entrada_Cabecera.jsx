@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { API_BASE_URL } from '../../../config/config';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { CheckCircle2 } from 'lucide-react';
 
 // Función para obtener fecha local en formato YYYY-MM-DD
 function getFechaLocal(date = new Date()) {
@@ -35,7 +36,6 @@ export default function Registro_Entrada_Cabecera({ usuario }) {
   const queryParams = new URLSearchParams(location.search);
   const entNumeroParam = queryParams.get('entNumero');
 
-  // El rol del usuario se pasa como prop o se obtiene de localStorage
   const userRole = usuario ? usuario.rol : null;
 
   const [formCabecera, setFormCabecera] = useState({
@@ -54,6 +54,7 @@ export default function Registro_Entrada_Cabecera({ usuario }) {
   const [tipoMensaje, setTipoMensaje] = useState('');
   const [nroCorteError, setNroCorteError] = useState('');
   const [editando, setEditando] = useState(false);
+  const [tieneDetalles, setTieneDetalles] = useState(0); // ✅ Nuevo estado para TieneDetalles
 
   // Cargar productos disponibles y datos de la entrada si se está editando
   useEffect(() => {
@@ -86,6 +87,7 @@ export default function Registro_Entrada_Cabecera({ usuario }) {
             ProdCodigo: dataCabecera.ProdCodigo,
             FechaCura: dataCabecera.FechaCura || '',
           }));
+          setTieneDetalles(dataCabecera.TieneDetalles || 0); // ✅ Cargar TieneDetalles
         }
       } catch (err) {
         console.error("Error al cargar datos iniciales:", err);
@@ -160,7 +162,7 @@ export default function Registro_Entrada_Cabecera({ usuario }) {
       return;
     }
 
-    const { Fecha, NroCorte, ProdCodigo, FechaCura } = formCabecera;
+    const { Fecha, NroCorte, ProdCodigo, FechaCura, Estado } = formCabecera;
     if (!Fecha || !NroCorte || !ProdCodigo || !FechaCura) {
         setTipoMensaje('error');
         setMensaje('⚠️ Por favor, complete todos los campos obligatorios de la cabecera (Fecha, Número de Corte, Producto Principal, Fecha Cura).');
@@ -175,17 +177,26 @@ export default function Registro_Entrada_Cabecera({ usuario }) {
       return;
     }
 
+    // ✅ Validación frontend para cerrar la operación (solo para supervisor)
+    if (userRole === 'supervisor' && editando && Estado === 'Cerrado' && tieneDetalles !== 1) {
+      setTipoMensaje('error');
+      setMensaje('❌ No se puede cerrar la operación sin tener productos de detalle cargados.');
+      setTimeout(() => setMensaje(''), 5000);
+      return;
+    }
+
+
     // Payload solo con datos de cabecera
     const payload = {
       Fecha: formCabecera.Fecha,
       NroCorte: formCabecera.NroCorte,
-      Estado: editando ? formCabecera.Estado : 'Abierto', // Estado solo editable en edición
+      Estado: formCabecera.Estado,
       Comentario: formCabecera.Comentario,
       FechaCat: getFechaHoraLocal(), // Actualizar FechaCat al guardar
       Usuario: usuario.legajo,
       ProdCodigo: formCabecera.ProdCodigo,
       FechaCura: formCabecera.FechaCura,
-      productosSeleccionados: [] // ✅ IMPORTANTE: Enviar array vacío para que el backend no espere detalles
+      productosSeleccionados: [] // Enviar array vacío para que el backend no espere detalles
     };
 
     try {
@@ -226,6 +237,7 @@ export default function Registro_Entrada_Cabecera({ usuario }) {
         Usuario: usuario ? usuario.legajo : '',
       });
       setEditando(false);
+      setTieneDetalles(0); // Resetear el estado de detalles
 
       setTimeout(() => {
         setMensaje('');
@@ -292,9 +304,13 @@ export default function Registro_Entrada_Cabecera({ usuario }) {
                 required
               >
                 <option value="Abierto">Abierto</option>
-                <option value="Cerrado">Cerrado</option>
+                {/* ✅ Deshabilitar la opción "Cerrado" si no tiene detalles */}
+                <option value="Cerrado" disabled={tieneDetalles !== 1}>Cerrado</option> 
                 <option value="Anulado">Anulado</option>
               </select>
+              {formCabecera.Estado === 'Cerrado' && tieneDetalles !== 1 && (
+                <p className="text-red-500 text-xs mt-1">Esta operación no puede cerrarse sin detalles.</p>
+              )}
             </div>
           )}
           <div className="md:col-span-1">
@@ -339,6 +355,21 @@ export default function Registro_Entrada_Cabecera({ usuario }) {
             ></textarea>
           </div>
         </div>
+
+        {/* Mensaje para el supervisor sobre los detalles */}
+        {editando && userRole === 'supervisor' && (
+          <div className={`mt-4 p-3 rounded-md ${tieneDetalles === 1 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+            {tieneDetalles === 1 ? (
+              <p className="flex items-center gap-2">
+                <CheckCircle2 size={20} /> Esta entrada tiene detalles de productos cargados.
+              </p>
+            ) : (
+              <p className="flex items-center gap-2">
+                <span className="text-lg font-bold">!</span> Esta entrada aún no tiene detalles de productos cargados. No puede ser cerrada.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Botón de Envío del Formulario Principal */}
         <div className="flex justify-center mt-6">

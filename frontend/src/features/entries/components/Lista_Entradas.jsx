@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../../../config/config';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp, Trash2, Plus, ArrowUp, ArrowDown, Edit } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trash2, Plus, ArrowUp, ArrowDown, Edit, CheckCircle2, XCircle } from 'lucide-react'; // ✅ Importar XCircle para el botón de cerrar
 
 // Función de utilidad para formatear la fecha a YYYY-MM-DD HH:mm:ss
 const formatDateToYYYYMMDDHHMMSS = (dateString) => {
@@ -37,6 +37,12 @@ export default function Lista_Entradas() {
   const [sortBy, setSortBy] = useState('EntNumero');
   const [sortOrder, setSortOrder] = useState('DESC');
   const navigate = useNavigate();
+
+  // ✅ Nuevos estados para el modal de confirmación
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [entryToClose, setEntryToClose] = useState(null);
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState(''); // 'success' or 'error'
 
   // Obtener el usuario del localStorage para determinar el rol
   const usuario = JSON.parse(localStorage.getItem('usuario'));
@@ -114,6 +120,8 @@ export default function Lista_Entradas() {
   };
 
   const handleDelete = async (entNumero) => {
+    // ✅ Usar un modal de confirmación personalizado en lugar de window.confirm
+    // Para simplificar, aquí se usa window.confirm, pero se recomienda un modal personalizado.
     if (window.confirm(`¿Estás seguro de que deseas eliminar la entrada N° ${entNumero}?`)) {
       try {
         const response = await fetch(`${API_BASE_URL}/entrada/${entNumero}`, {
@@ -132,33 +140,93 @@ export default function Lista_Entradas() {
           delete newDetalles[entNumero];
           return newDetalles;
         });
-        alert(`✅ Entrada N° ${entNumero} eliminada correctamente.`); // Usar un modal en lugar de alert
+        setModalMessage(`✅ Entrada N° ${entNumero} eliminada correctamente.`);
+        setModalType('success');
+        setShowConfirmModal(true); // Reutilizar el modal para el mensaje de éxito/error
       } catch (err) {
         console.error("Error al eliminar entrada:", err);
-        alert(`❌ Error: ${err.message}`); // Usar un modal en lugar de alert
+        setModalMessage(`❌ Error: ${err.message}`);
+        setModalType('error');
+        setShowConfirmModal(true); // Reutilizar el modal para el mensaje de éxito/error
       }
     }
   };
 
-  // ✅ Modificado: Navegación a diferentes formularios según el rol
   const handleEdit = (entNumero) => {
     if (userRole === 'admin') {
-      navigate(`/registro/entrada?entNumero=${entNumero}`); // Admin: formulario completo
+      navigate(`/registro/entrada?entNumero=${entNumero}`);
     } else if (userRole === 'supervisor') {
-      navigate(`/registro/entrada/cabecera?entNumero=${entNumero}`); // Supervisor: solo cabecera
+      navigate(`/registro/entrada/cabecera?entNumero=${entNumero}`);
     } else if (userRole === 'operador') {
-      navigate(`/registro/entrada/detalle?entNumero=${entNumero}`); // Operador: solo detalle
+      navigate(`/registro/entrada/detalle?entNumero=${entNumero}`);
     }
   };
 
-  // ✅ Modificado: Navegación para nueva entrada
   const handleNewEntry = () => {
     if (userRole === 'admin') {
-      navigate('/registro/entrada'); // Admin: formulario completo
+      navigate('/registro/entrada');
     } else if (userRole === 'supervisor') {
-      navigate('/registro/entrada/cabecera'); // Supervisor: solo cabecera
+      navigate('/registro/entrada/cabecera');
     }
-    // Operador no tiene botón de nueva entrada
+  };
+
+  // ✅ Función para abrir el modal de confirmación de cierre
+  const handleOpenCloseModal = (entNumero, tieneDetalles) => {
+    if (tieneDetalles === 0) {
+      setModalMessage('❌ No se puede cerrar la operación sin tener productos de detalle cargados.');
+      setModalType('error');
+      setShowConfirmModal(true);
+      setEntryToClose(null); // No hay entrada para cerrar si no tiene detalles
+    } else {
+      setEntryToClose(entNumero);
+      setModalMessage(`¿Estás seguro de que deseas cerrar la operación N° ${entNumero}? Una vez cerrada, no se podrán modificar sus detalles.`);
+      setModalType('confirm');
+      setShowConfirmModal(true);
+    }
+  };
+
+  // ✅ Función para confirmar el cierre de la operación
+  const handleConfirmClose = async () => {
+    if (!entryToClose) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/entrada/${entryToClose}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Estado: 'Cerrado' }), // Solo enviamos el estado
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error desconocido al cerrar la operación.');
+      }
+
+      // Actualizar el estado local de las entradas
+      setEntradas(prevEntries =>
+        prevEntries.map(ent =>
+          ent.EntNumero === entryToClose ? { ...ent, Estado: 'Cerrado' } : ent
+        )
+      );
+
+      setModalMessage(`✅ Operación N° ${entryToClose} cerrada correctamente.`);
+      setModalType('success');
+      // No cerramos el modal aquí, esperamos que el usuario haga clic en "Cerrar"
+    } catch (err) {
+      console.error("Error al cerrar operación:", err);
+      setModalMessage(`❌ Error al cerrar operación: ${err.message}`);
+      setModalType('error');
+    } finally {
+      setEntryToClose(null); // Limpiar la entrada a cerrar
+    }
+  };
+
+  // ✅ Función para cancelar o cerrar el modal
+  const handleCloseModal = () => {
+    setShowConfirmModal(false);
+    setEntryToClose(null);
+    setModalMessage('');
+    setModalType('');
   };
 
   if (loading) {
@@ -184,7 +252,6 @@ export default function Lista_Entradas() {
       <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">Lista de Entradas</h1>
 
       {/* Botón para nueva entrada */}
-      {/* Solo 'supervisor' y 'admin' pueden crear nuevas entradas */}
       {(userRole === 'admin' || userRole === 'supervisor') && (
         <div className="flex justify-end mb-4">
           <button
@@ -225,6 +292,7 @@ export default function Lista_Entradas() {
               <th scope="col" className="px-6 py-3">Usuario</th>
               <th scope="col" className="px-6 py-3">Producto Principal</th>
               <th scope="col" className="px-6 py-3">Fecha Cura (Cabecera)</th>
+              <th scope="col" className="px-6 py-3 text-center">Detalles Cargados</th>
               <th scope="col" className="px-6 py-3 text-center">Acciones</th>
             </tr>
           </thead>
@@ -250,17 +318,36 @@ export default function Lista_Entradas() {
                     <td className="px-6 py-4">{ent.Comentario || '-'}</td>
                     <td className="px-6 py-4">{formatDateToYYYYMMDDHHMMSS(ent.FechaCat)}</td>
                     <td className="px-6 py-4">{ent.UsuarioNombre || ent.Usuario}</td>
-                    <td className="px-6 py-4">{ent.ProdPrincipalNombre ? `${ent.ProdPrincipalNombre} (${ent.TipProdNombre})` : '-'}</td>
+                    <td className="px-6 py-4">{ent.ProdPrincipalNombre ? `${ent.ProdPrincipalNombre}` : '-'}</td>
                     <td className="px-6 py-4">{formatDateToYYYYMMDDHHMMSS(ent.FechaCura) || '-'}</td>
                     <td className="px-6 py-4 text-center">
-                      {/* Botones de acción condicionales por rol */}
+                      {ent.TieneDetalles === 1 ? (
+                        <CheckCircle2 size={20} className="text-green-500 mx-auto" title="Detalles Cargados" />
+                      ) : (
+                        <span className="text-gray-400">N/A</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-center flex items-center justify-center space-x-2">
+                      {/* Botón de Editar */}
                       {(userRole === 'admin' || userRole === 'supervisor' || userRole === 'operador') && (
                         <button
                           onClick={() => handleEdit(ent.EntNumero)}
-                          className="font-medium text-indigo-600 hover:text-indigo-900 mr-3"
+                          className="font-medium text-indigo-600 hover:text-indigo-900"
                           title="Editar Entrada"
                         >
                           <Edit size={20} />
+                        </button>
+                      )}
+                      {/* Botón de Cerrar (solo para admin y supervisor, si no está cerrada y tiene detalles) */}
+                      {(userRole === 'admin' || userRole === 'supervisor') && ent.Estado === 'Abierto' && (
+                        <button
+                          onClick={() => handleOpenCloseModal(ent.EntNumero, ent.TieneDetalles)}
+                          className={`font-medium px-2 py-1 rounded-md text-white transition-colors
+                            ${ent.TieneDetalles === 1 ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                          title={ent.TieneDetalles === 1 ? 'Cerrar Operación' : 'Cerrar Operación (Requiere Detalles)'}
+                          disabled={ent.TieneDetalles !== 1}
+                        >
+                          Cerrar
                         </button>
                       )}
                       {/* Solo Admin puede eliminar */}
@@ -277,7 +364,7 @@ export default function Lista_Entradas() {
                   </tr>
                   {expandedRow === ent.EntNumero && detalles[ent.EntNumero] && (
                     <tr className="bg-gray-50">
-                      <td colSpan="11" className="p-4">
+                      <td colSpan="12" className="p-4">
                         <h4 className="text-lg font-semibold text-gray-700 mb-3">Detalles de Productos:</h4>
                         <div className="overflow-x-auto rounded-lg border border-gray-200">
                           <table className="min-w-full text-xs text-left text-gray-600">
@@ -316,7 +403,7 @@ export default function Lista_Entradas() {
               ))
             ) : (
               <tr>
-                <td colSpan="11" className="text-center text-gray-500 py-4">
+                <td colSpan="12" className="text-center text-gray-500 py-4">
                   No hay entradas registradas.
                 </td>
               </tr>
@@ -324,6 +411,61 @@ export default function Lista_Entradas() {
           </tbody>
         </table>
       </div>
+
+      {/* ✅ Modal de Confirmación / Mensaje */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full relative">
+            <button
+              onClick={handleCloseModal}
+              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+            >
+              <XCircle size={24} />
+            </button>
+            <div className="text-center mb-6">
+              {modalType === 'confirm' && (
+                <p className="text-xl font-semibold text-gray-800">{modalMessage}</p>
+              )}
+              {modalType === 'success' && (
+                <p className="text-xl font-semibold text-green-600 flex items-center justify-center gap-2">
+                  <CheckCircle2 size={24} /> {modalMessage}
+                </p>
+              )}
+              {modalType === 'error' && (
+                <p className="text-xl font-semibold text-red-600 flex items-center justify-center gap-2">
+                  <XCircle size={24} /> {modalMessage}
+                </p>
+              )}
+            </div>
+            {modalType === 'confirm' && (
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={handleConfirmClose}
+                  className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 transition-colors shadow-md"
+                >
+                  Confirmar
+                </button>
+                <button
+                  onClick={handleCloseModal}
+                  className="bg-gray-400 text-white px-6 py-2 rounded-md hover:bg-gray-500 transition-colors shadow-md"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+            {(modalType === 'success' || modalType === 'error') && (
+              <div className="flex justify-center">
+                <button
+                  onClick={handleCloseModal}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors shadow-md"
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

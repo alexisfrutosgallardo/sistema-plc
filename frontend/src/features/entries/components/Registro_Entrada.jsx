@@ -1,3 +1,4 @@
+// Contenido de Registro_Entrada.jsx (Admin Full Control) - Sin cambios
 import React, { useState, useEffect, useMemo } from 'react';
 import { API_BASE_URL } from '../../../config/config';
 import { useNavigate, useLocation } from 'react-router-dom';
