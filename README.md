@@ -155,10 +155,10 @@ sistema-plc/
 │   │   │   │   │   ├── Lista_Maquinas.jsx
 │   │   │   │   │   └── Registro_Maquina.jsx
 |
-├───maintenance
-│   └───components
-│           Mantenimiento_EstadoMovimiento.jsx
-│           Mantenimiento_Repesaje.jsx
+│   │   │   ├── maintenance/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Mantenimiento_EstadoMovimiento.jsx
+│   │   │   │   │   ├── Mantenimiento_Repesaje.jsx
 │
 │   │   │   ├── misc-registers
 │   │   │   │   └───components/
@@ -168,7 +168,7 @@ sistema-plc/
 │   │   │   │   │   ├── Registro_Minisilo.jsx
 │   │   │   │   │   └── Registro_TipoBlend.jsx
 │
-│   │   │   ├── movimientos
+│   │   │   ├── movimientos/
 │   │   │   │   └───components/
 │   │   │   │   │   ├── Movimiento_Movim.jsx
 │   │   │   │   │   └── Movimiento_Pesaje.jsx
@@ -186,7 +186,7 @@ sistema-plc/
 │   │   │   │   │   ├── Lista_RelSiloBlend.jsx
 │   │   │   │   │   └── Registro_RelSiloBlend.jsx
 │
-│   │   │   ├── silos
+│   │   │   ├── silos/
 │   │   │   │   └───components/
 │   │   │   │   │   ├── Lista_Silos.jsx
 │   │   │   │   │   └── Registro_Silo.jsx
@@ -197,11 +197,25 @@ sistema-plc/
 │   │   │   │   │   ├── Registro_Usuario.jsx
 │   │   │   │   │   └── Utilidad_CambiarContrasena.js
 |
+│   ├── public/
+│   |   ├── favicon.ico
+│   |   ├── favicon1.ico
+│   |   ├── index.html
+│   |   ├── logo192.png
+│   |   ├── logo512.png
+│   |   ├── manifest.json
+│   |   └── robots.txt
+|
 │   │   ├── App.css
 │   │   ├── App.jsx
 │   │   ├── index.css
 │   │   ├── index.js
 │   │   └── logo_1.svg
+|
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.js
+│   ├── tailwind.config.js
 │
 ├── .gitignore
 └── README.md
