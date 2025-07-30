@@ -215,7 +215,7 @@ sistema-plc/
 │   ├── package.json
 │   ├── package-lock.json
 │   ├── postcss.config.js
-│   ├── tailwind.config.js
+│   └── tailwind.config.js
 │
 ├── .gitignore
 └── README.md
