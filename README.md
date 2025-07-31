@@ -42,20 +42,180 @@ sistema-plc/
 │
 ├── backend/
 │   ├── controllers/
+│   │   ├── approverController.js
+│   │   ├── blendTypeController.js
+│   │   ├── cargoController.js
+│   │   ├── cigaretteFactoryController.js
+│   │   ├── dashboardController.js
+│   │   ├── detalleMaquinaController.js
+│   │   ├── entryController.js
+│   │   ├── exitController.js
+│   │   ├── machineController.js
+│   │   ├── miniSiloController.js
+│   │   ├── movementController.js
+│   │   ├── productController.js
+│   │   ├── relSiloBlendController.js
+│   │   ├── siloController.js
+│   │   ├── typeProductController.js
+│   │   └── userController.js
+│
 │   ├── routes/
+│   │   ├── approverRoutes.js
+│   │   ├── blendTypeRoutes.js
+│   │   ├── cargoRoutes.js
+│   │   ├── cigaretteFactoryRoutes.js
+│   │   ├── dashboardRoutes.js
+│   │   ├── detalleMaquinaRoutes.js
+│   │   ├── entryRoutes.js
+│   │   ├── exitRoutes.js
+│   │   ├── machineRoutes.js
+│   │   ├── maintenanceRoutes.js
+│   │   ├── miniSiloRoutes.js
+│   │   ├── movementRoutes.js
+│   │   ├── productRoutes.js
+│   │   ├── relSiloBlendRoutes.js
+│   │   ├── siloRoutes.js
+│   │   ├── typeProductRoutes.js
+│   │   └── userRoutes.js
+│
 │   ├── database/
-│   └── entryRepository.js
+│   │   └── index.js
+│
+│   └── repository/
+│   │   ├── approverRepository.js
+│   │   ├── blendTypeRepository.js
+│   │   ├── cargoRepository.js
+│   │   ├── cigaretteFactoryRepository.js
+│   │   ├── detalleMaquinaRepository.js
+│   │   ├── entryRepository.js
+│   │   ├── exitRepository.js
+│   │   ├── machineRepository.js
+│   │   ├── maintenanceRepository.js
+│   │   ├── miniSiloRepository.js
+│   │   ├── productRepository.js
+│   │   ├── relSiloBlendRepository.js
+│   │   ├── siloRepository.js
+│   │   ├── typeProductRepository.js
+│   │   └── userRepository.js
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── plc.db
+│   └── server.js
 │
 ├── frontend/
 │   ├── src/
+│   │   ├── assets/
+│   │   │   ├── bg-login.jpg
+│   │   │   ├── bg-login2.jpg
+│   │   │   └── bg-login3.jpg
+|
+│   │   ├── common/
+│   │   │   │   ├── components/
+│   │   │   │   │   ├── DashboardLayout.jsx
+│   │   │   │   │   ├── ProtectedRoute.jsx
+│   │   │   │   │   └── Sidebar.jsx
+│   │   │   │   └── utils/
+│   │   │   │   │   └── permisos.js
+|
+│   │   ├── config/
+│   │   │   └── config.js
+|
 │   │   ├── features/
 │   │   │   ├── auth/
+│   │   │   │   └── Login.jsx
+|
+│   │   │   ├── dashboard/
+│   │   │   │   └───components/
+│   │   │   │   │   └── DashboardHome.jsx
+|
 │   │   │   ├── entries/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Lista_Entradas.jsx
+│   │   │   │   │   ├── Registro_Entrada.jsx
+│   │   │   │   │   ├── Registro_Entrada_Cabecera.jsx
+│   │   │   │   │   └── Registro_Entrada_Detalle.jsx
+│
+│   │   │   ├── exits/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Lista_Salidas.jsx
+│   │   │   │   │   └── Registro_Salida.jsx
+|
+│   │   │   ├── history/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Historial_BlendMinisilo.jsx
+│   │   │   │   │   ├── Historial_BlendXCigarrillera.jsx
+│   │   │   │   │   ├── Historial_DashDeposito.jsx
+│   │   │   │   │   ├── Historial_DashGrafico.jsx
+│   │   │   │   │   ├── Historial_DashSilo.jsx
+│   │   │   │   │   ├── Historial_MovimientoTabaco.jsx
+│   │   │   │   │   └── Historial_Operacion.jsx
+|
+│   │   │   ├── machines/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Lista_Maquinas.jsx
+│   │   │   │   │   └── Registro_Maquina.jsx
+|
+│   │   │   ├── maintenance/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Mantenimiento_EstadoMovimiento.jsx
+│   │   │   │   │   ├── Mantenimiento_Repesaje.jsx
+│
+│   │   │   ├── misc-registers
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Registro_Aprobador.jsx
+│   │   │   │   │   ├── Registro_Cargo.jsx
+│   │   │   │   │   ├── Registro_Cigarrillera.jsx
+│   │   │   │   │   ├── Registro_Minisilo.jsx
+│   │   │   │   │   └── Registro_TipoBlend.jsx
+│
+│   │   │   ├── movimientos/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Movimiento_Movim.jsx
+│   │   │   │   │   └── Movimiento_Pesaje.jsx
+|
 │   │   │   ├── products/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Lista_Productos.jsx
+│   │   │   │   │   ├── Lista_TipoProducto.jsx
+│   │   │   │   │   ├── Registro_Producto.jsx
+│   │   │   │   │   └── Registro_TipoProducto.jsx
+│
 │   │   │   ├── relsilo-blend/
-│   │   │   └── usuarios/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Detalle_Maquinas.jsx
+│   │   │   │   │   ├── Lista_RelSiloBlend.jsx
+│   │   │   │   │   └── Registro_RelSiloBlend.jsx
+│
+│   │   │   ├── silos/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Lista_Silos.jsx
+│   │   │   │   │   └── Registro_Silo.jsx
+|
+│   │   │   └── users/
+│   │   │   │   └───components/
+│   │   │   │   │   ├── Lista_Usuarios.jsx
+│   │   │   │   │   ├── Registro_Usuario.jsx
+│   │   │   │   │   └── Utilidad_CambiarContrasena.js
+|
+│   ├── public/
+│   |   ├── favicon.ico
+│   |   ├── favicon1.ico
+│   |   ├── index.html
+│   |   ├── logo192.png
+│   |   ├── logo512.png
+│   |   ├── manifest.json
+│   |   └── robots.txt
+|
+│   │   ├── App.css
 │   │   ├── App.jsx
-│   │   └── DashboardLayout.jsx
+│   │   ├── index.css
+│   │   ├── index.js
+│   │   └── logo_1.svg
+|
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.js
+│   └── tailwind.config.js
 │
 ├── .gitignore
 └── README.md
