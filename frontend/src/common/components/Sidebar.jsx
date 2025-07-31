@@ -26,10 +26,19 @@ const MENU_CONFIG = [
       { nombre: 'Minisilo', icono: Factory, ruta: 'minisilo', permiso: 'Minisilo' },
       { nombre: 'Tipo de Blend', icono: Sprout, ruta: 'tipoblend', permiso: 'Tipo de blend' },
       { nombre: 'Máquinas', icono: Monitor, ruta: 'lista-maquinas', permiso: 'Lista de Máquinas' },
-      { nombre: 'Entradas', icono: ClipboardList, ruta: 'lista-entradas', permiso: 'Lista de Entradas' },
+      { nombre: 'Registro de Entrada', icono: ClipboardList, ruta: 'entrada', permiso: 'Registro de Entrada' },
+      { nombre: 'Lista de Entradas', icono: ClipboardList, ruta: 'lista-entradas', permiso: 'Lista de Entradas' },
       { nombre: 'Silos', icono: Bolt, ruta: 'lista-silos', permiso: 'Lista de Silos' },
       { nombre: 'Relación Productos con Silos', icono: List, ruta: 'lista-relsilo1', permiso: 'ListaRelSilo1' },
       { nombre: 'Salidas', icono: Truck, ruta: 'lista-salidas', permiso: 'Lista de Salidas' }
+    ]
+  },
+  {
+    grupo: 'movimientos', // ✅ Grupo "movimientos" para entradas
+    titulo: 'Movimientos',
+    items: [
+      { nombre: 'Movimiento', icono: Activity, ruta: 'movimiento', permiso: 'Movimiento' },
+      { nombre: 'Pesaje', icono: Scale, ruta: 'pesaje', permiso: 'Pesaje' }
     ]
   },
   {
@@ -38,14 +47,6 @@ const MENU_CONFIG = [
     items: [
       { nombre: 'Estado Movimiento', icono: ToggleRight, ruta: 'estadomovimiento', permiso: 'Estado de movimiento' },
       { nombre: 'Repesaje', icono: Weight, ruta: 'repesaje', permiso: 'Repesaje' }
-    ]
-  },
-  {
-    grupo: 'movimientos',
-    titulo: 'Movimientos',
-    items: [
-      { nombre: 'Movimiento', icono: Activity, ruta: 'movimiento', permiso: 'Movimiento' },
-      { nombre: 'Pesaje', icono: Scale, ruta: 'pesaje', permiso: 'Pesaje' }
     ]
   },
   {
@@ -115,7 +116,6 @@ const Sidebar = ({ usuario, onLogout, sidebarAbierto, setSidebarAbierto }) => {
       </button>
 
       <div className="text-2xl font-bold text-center mb-6">PLC Control</div>
-
       <Link
         to="/dashboard"
         className={`flex items-center gap-2 p-2 rounded mb-4 ${

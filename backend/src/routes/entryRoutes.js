@@ -4,7 +4,10 @@ const entryController = require('../controllers/entryController');
 
 const router = express.Router();
 
-// ✅ NUEVA RUTA: Obtener los contadores de serie global y prefijo IdParam
+// ✅ NUEVA RUTA: Obtener la única entrada con estado 'Abierto'
+router.get('/entrada/abierta', entryController.getSingleOpenEntry);
+
+// ✅ RUTA EXISTENTE: Obtener los contadores de serie global
 router.get('/entrada/series-counters', entryController.getEntrySeriesCounters);
 
 // ✅ Ruta nueva para el dashboard (últimas entradas)

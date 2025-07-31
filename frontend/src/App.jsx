@@ -28,10 +28,11 @@ import Lista_Maquinas from './features/machines/components/Lista_Maquinas';
 import Registro_Silo from './features/silos/components/Registro_Silo';
 import Lista_Silos from './features/silos/components/Lista_Silos';
 
+// ✅ Importación del componente principal de Registro_Entrada
 import Registro_Entrada from './features/entries/components/Registro_Entrada';
 import Lista_Entradas from './features/entries/components/Lista_Entradas';
-import Registro_Entrada_Cabecera from './features/entries/components/Registro_Entrada_Cabecera';
-import Registro_Entrada_Detalle from './features/entries/components/Registro_Entrada_Detalle';
+// ✅ Ya no se importan Registro_Entrada_Cabecera y Registro_Entrada_Detalle directamente aquí,
+//    ya que son manejados internamente por Registro_Entrada.jsx
 
 import Registro_RelSiloBlend from './features/relsilo-blend/components/Registro_RelSiloBlend'; 
 import Lista_RelSiloBlend from './features/relsilo-blend/components/Lista_RelSiloBlend'; 
@@ -48,7 +49,6 @@ import Mantenimiento_EstadoMovimiento from './features/maintenance/components/Ma
 import Mantenimiento_Repesaje from './features/maintenance/components/Mantenimiento_Repesaje';
 
 // HISTORIAL
-// ✅ RUTAS DE IMPORTACIÓN REVISADAS PARA 'history' (asumiendo carpeta 'history' en minúsculas)
 import Historial_BlendXCigarrillera from './features/history/components/Historial_BlendXCigarrillera';
 import Historial_BlendMinisilo from './features/history/components/Historial_BlendMinisilo';
 import Historial_DashDeposito from './features/history/components/Historial_DashDeposito';
@@ -141,15 +141,13 @@ function App() {
                 <Lista_Productos />
               </ProtectedRoute>
             } />
-            {/* ✅ Ruta para Registro de Tipo de Producto (permite TipProdCodigo para edición) */}
             <Route path="registro/tipoproducto" element={
               <ProtectedRoute usuario={usuario} requiredPermission="registro" specificPermission="Tipo de producto">
                 <Registro_TipoProducto usuario={usuario} />
               </ProtectedRoute>
             } />
-            {/* ✅ Nueva Ruta para Lista de Tipos de Producto */}
             <Route path="registro/lista-tipoproducto" element={
-              <ProtectedRoute usuario={usuario} requiredPermission="registro" specificPermission="Lista de Tipo de producto"> {/* Asumiendo este permiso */}
+              <ProtectedRoute usuario={usuario} requiredPermission="registro" specificPermission="Lista de Tipo de producto">
                 <Lista_TipoProducto />
               </ProtectedRoute>
             } />
@@ -170,18 +168,7 @@ function App() {
             } />
             <Route path="registro/lista-entradas" element={
               <ProtectedRoute usuario={usuario} requiredPermission="registro" specificPermission="Lista de Entradas">
-                <Lista_Entradas />
-              </ProtectedRoute>
-            } />
-                        {/* ✅ NUEVAS RUTAS PARA FORMULARIOS ESPECÍFICOS POR ROL */}
-            <Route path="registro/entrada/cabecera" element={
-              <ProtectedRoute usuario={usuario} requiredPermission="registro" specificPermission="Entradas">
-                <Registro_Entrada_Cabecera usuario={usuario} /> {/* Solo cabecera para Supervisor */}
-              </ProtectedRoute>
-            } />
-            <Route path="registro/entrada/detalle" element={
-              <ProtectedRoute usuario={usuario} requiredPermission="registro" specificPermission="Entradas">
-                <Registro_Entrada_Detalle usuario={usuario} /> {/* Solo detalle para Operador */}
+                <Lista_Entradas usuario={usuario} /> {/* ✅ Pasar el usuario para el control de botones */}
               </ProtectedRoute>
             } />
             <Route path="registro/silo" element={

@@ -43,20 +43,28 @@ const entryController = {
     }
   },
 
-  // Crear una nueva entrada
+  // ✅ NUEVO MÉTODO: Obtener la única entrada con estado 'Abierto'
+  getSingleOpenEntry: async (req, res) => {
+    try {
+      const openEntry = await entryRepository.getSingleOpenEntry();
+      if (!openEntry) {
+        return res.status(404).json({ error: "No hay ninguna entrada con estado 'Abierto'." });
+      }
+      res.json(openEntry);
+    } catch (err) {
+      console.error("❌ Error al obtener entrada abierta:", err.message);
+      res.status(500).json({ error: "Error al obtener la entrada abierta." });
+    }
+  },
+
+  // Crear una nueva entrada (solo cabecera para supervisor, o completa para admin)
   createEntry: async (req, res) => {
-    const { Fecha, NroCorte, productosSeleccionados } = req.body;
+    const { Fecha, NroCorte } = req.body;
     if (!Fecha || !NroCorte) {
       return res.status(400).json({ error: "⚠️ Faltan campos obligatorios de la cabecera (Fecha, NroCorte)." });
     }
     try {
       const result = await entryRepository.createEntry(req.body);
-
-      if (productosSeleccionados && productosSeleccionados.length > 0) {
-        const lastSerieUsed = Number(productosSeleccionados[productosSeleccionados.length - 1].Serie);
-        await entryRepository.incrementarSerieGlobal(lastSerieUsed);
-      }
-
       res.status(201).json(result);
     } catch (err) {
       console.error("❌ Error al crear entrada:", err.message);
@@ -70,10 +78,10 @@ const entryController = {
   // Actualizar una entrada existente (flexible para cabecera y/o detalles)
   updateEntry: async (req, res) => {
     const { entNumero } = req.params;
-    const { Estado, ...entryData } = req.body; // Extraer Estado para validación específica
+    const { Estado, productosSeleccionados, NroCorte } = req.body;
 
     try {
-      // ✅ Validación para cerrar la operación: Solo si se intenta cambiar a 'Cerrado'
+      // Validación para cerrar la operación: Solo si se intenta cambiar a 'Cerrado'
       if (Estado === 'Cerrado') {
         const hasDetails = await entryRepository.checkIfEntryHasDetails(entNumero);
         if (!hasDetails) {
@@ -81,12 +89,19 @@ const entryController = {
         }
       }
 
-      const result = await entryRepository.updateEntry(entNumero, req.body); // Pasar el body completo
+      const payload = { ...req.body };
+      // Si productosSeleccionados no está presente, significa que es una actualización de solo cabecera.
+      // Si está presente, es una actualización de detalles (o completa).
+      if (productosSeleccionados === undefined) {
+        delete payload.productosSeleccionados; 
+      }
+
+      const result = await entryRepository.updateEntry(entNumero, payload);
       res.json(result);
     } catch (err) {
       console.error("❌ Error al actualizar entrada:", err.message);
       if (err.message.includes('UNIQUE constraint failed: Entrada1.NroCorte')) {
-        return res.status(409).json({ error: `El Número de Corte '${entryData.NroCorte}' ya existe para otra entrada.` });
+        return res.status(409).json({ error: `El Número de Corte '${NroCorte}' ya existe para otra entrada.` });
       }
       res.status(500).json({ error: "Error al actualizar la entrada." });
     }
@@ -95,7 +110,8 @@ const entryController = {
   // Obtener cortes únicos de Entrada1
   getUniqueCortes: async (req, res) => {
     try {
-      res.status(501).json({ message: "Este endpoint aún no está implementado en el controlador." });
+      const cortes = await entryRepository.getUniqueCortes();
+      res.json(cortes);
     } catch (err) {
       console.error("❌ Error al obtener cortes únicos:", err.message);
       res.status(500).json({ error: "Error al obtener la lista de cortes." });
@@ -135,9 +151,7 @@ const entryController = {
   // Obtener los contadores actuales (serie global)
   getEntrySeriesCounters: async (req, res) => {
     try {
-      //console.log("📣 Llamada a /entrada/series-counters recibida");
       const ultimaSerie = await entryRepository.obtenerUltimaSerie();
-
       res.json({ globalSerie: ultimaSerie });
     } catch (err) {
       console.error("❌ Error al obtener contadores de serie:", err.message);

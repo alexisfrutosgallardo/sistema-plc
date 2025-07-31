@@ -81,6 +81,29 @@ const entryRepository = {
     });
   },
 
+  // ✅ NUEVO MÉTODO: Obtener la única entrada con estado 'Abierto'
+  getSingleOpenEntry: () => {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT e.EntNumero, e.Fecha, e.NroCorte, e.Estado, e.Comentario, e.FechaCat, e.Usuario, e.ProdCodigo, e.FechaCura, e.TieneDetalles,
+               u.UsuNombre AS UsuarioNombre,
+               p.ProdNombre AS ProdPrincipalNombre, tp.TipProdNombre AS ProdPrincipalTipoNombre
+        FROM Entrada1 e
+        LEFT JOIN Usuario u ON e.Usuario = u.legajo
+        LEFT JOIN Producto p ON e.ProdCodigo = p.ProdCodigo
+        LEFT JOIN TipoProducto tp ON p.TipProdCodigo = tp.TipProdCodigo
+        WHERE e.Estado = 'Abierto'
+        LIMIT 1
+      `;
+      db.get(sql, [], (err, row) => {
+        if (err) {
+          return reject(err);
+        }
+        resolve(row); // Retorna null si no hay ninguna entrada abierta
+      });
+    });
+  },
+
   // Obtener el próximo EntNumero disponible
   getNextEntNumero: () => {
     return new Promise((resolve, reject) => {
@@ -109,10 +132,12 @@ const entryRepository = {
     });
   },
 
-  // Crear una nueva entrada (cabecera y detalles con serie incremental)
+  // Crear una nueva entrada (solo cabecera inicialmente)
   createEntry: (entryData) => {
     return new Promise((resolve, reject) => {
-      const { Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, FechaCura, productosSeleccionados } = entryData;
+      const { Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, FechaCura } = entryData;
+      // productosSeleccionados no se usa aquí, ya que el supervisor solo crea la cabecera
+      const tieneDetalles = 0; // Siempre 0 al crear solo la cabecera
 
       db.serialize(async () => {
         db.run("BEGIN TRANSACTION;");
@@ -124,7 +149,6 @@ const entryRepository = {
           }
 
           let nextEntNumero = row && row.EntNumero ? row.EntNumero + 1 : 1;
-          const tieneDetalles = (productosSeleccionados && productosSeleccionados.length > 0) ? 1 : 0;
 
           const sql1 = `
             INSERT INTO Entrada1 (EntNumero, Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, FechaCura, TieneDetalles)
@@ -134,7 +158,7 @@ const entryRepository = {
             nextEntNumero,
             Fecha,
             NroCorte,
-            Estado || 'Abierto',
+            Estado || 'Abierto', // Por defecto 'Abierto'
             Comentario,
             Usuario,
             FechaCat,
@@ -149,65 +173,17 @@ const entryRepository = {
               return reject(err);
             }
 
-            try {
-              const entNumeroInsertado = nextEntNumero;
-
-              if (productosSeleccionados && productosSeleccionados.length > 0) {
-                for (let i = 0; i < productosSeleccionados.length; i++) {
-                  const prod = productosSeleccionados[i];
-                  const serieToUse = prod.Serie;
-
-                  const sql2 = `
-                    INSERT INTO Entrada2 (EntNumero, Iten, ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                  `;
-                  const params2 = [
-                    entNumeroInsertado,
-                    i + 1,
-                    prod.ProdCodigo,
-                    serieToUse,
-                    prod.Cantidad,
-                    prod.Fecha,
-                    FechaCura, 
-                    prod.FechaIngr,
-                    prod.Estado || 'Activo',
-                    Usuario,
-                    FechaCat
-                  ];
-
-                  await new Promise((resolveInsert, rejectInsert) => {
-                    db.run(sql2, params2, function (err) {
-                      if (err) return rejectInsert(err);
-
-                      const updateStockSql = `
-                        UPDATE Producto
-                        SET Stock = Stock + ?
-                        WHERE ProdCodigo = ?
-                      `;
-                      db.run(updateStockSql, [prod.Cantidad, prod.ProdCodigo], function (err) {
-                        if (err) rejectInsert(err);
-                        else resolveInsert();
-                      });
-                    });
-                  });
-                }
+            db.run("COMMIT;", (commitErr) => {
+              if (commitErr) {
+                db.run("ROLLBACK;");
+                return reject(commitErr);
               }
-
-              db.run("COMMIT;", (commitErr) => {
-                if (commitErr) {
-                  db.run("ROLLBACK;");
-                  return reject(commitErr);
-                }
-                resolve({
-                  message: "✅ Entrada y detalles registrados correctamente",
-                  EntNumero: entNumeroInsertado,
-                  NroCorte: NroCorte
-                });
+              resolve({
+                message: "✅ Cabecera de entrada registrada correctamente",
+                EntNumero: nextEntNumero,
+                NroCorte: NroCorte
               });
-            } catch (errFinal) {
-              db.run("ROLLBACK;");
-              reject(errFinal);
-            }
+            });
           });
         });
       });
@@ -216,11 +192,11 @@ const entryRepository = {
 
   // Actualizar una entrada (cabecera y/o detalles)
   updateEntry: (entNumero, entryData) => {
-    return new Promise(async (resolve, reject) => { // ✅ Usar async/await aquí
+    return new Promise(async (resolve, reject) => {
       const { productosSeleccionados } = entryData;
 
-      db.serialize(async () => { // ✅ Usar async aquí también
-        db.run("BEGIN TRANSACTION;", async (beginErr) => { // ✅ Usar async aquí
+      db.serialize(async () => {
+        db.run("BEGIN TRANSACTION;", async (beginErr) => {
           if (beginErr) {
             return reject(beginErr);
           }
@@ -272,8 +248,28 @@ const entryRepository = {
               });
             });
 
-            // 4. Actualizar detalles si productosSeleccionados están presentes
-            if (productosSeleccionados !== undefined) { // Si el campo está presente en el payload
+            // 4. Actualizar detalles si productosSeleccionados están presentes en el payload
+            if (productosSeleccionados !== undefined) { 
+              // Obtener detalles actuales para revertir stock
+              const oldDetails = await new Promise((resolveOldDetails, rejectOldDetails) => {
+                db.all(`SELECT ProdCodigo, Cantidad FROM Entrada2 WHERE EntNumero = ?`, [entNumero], (err, rows) => {
+                  if (err) return rejectOldDetails(err);
+                  resolveOldDetails(rows);
+                });
+              });
+
+              // Revertir stock de los detalles antiguos
+              const stockRevertPromises = oldDetails.map(detail => {
+                return new Promise((resolveRevert, rejectRevert) => {
+                  const updateStockSql = `UPDATE Producto SET Stock = Stock - ? WHERE ProdCodigo = ?`;
+                  db.run(updateStockSql, [detail.Cantidad, detail.ProdCodigo], function(err) {
+                    if (err) rejectRevert(err);
+                    else resolveRevert();
+                  });
+                });
+              });
+              await Promise.all(stockRevertPromises);
+
               // Eliminar detalles existentes para esta entrada
               const sqlDeleteDetails = `DELETE FROM Entrada2 WHERE EntNumero = ?`;
               await new Promise((resolveRun, rejectRun) => {
@@ -283,10 +279,23 @@ const entryRepository = {
                 });
               });
 
-              // Insertar nuevos detalles
+              // Insertar nuevos detalles y actualizar stock
               if (productosSeleccionados.length > 0) {
+                let maxSerieInThisUpdate = await entryRepository.obtenerUltimaSerie(); // Obtener la serie global actual
+                
                 const insertPromises = productosSeleccionados.map(async detail => {
-                  const serieToUse = detail.Serie;
+                  // Si la serie del detalle es nueva (no venía de la DB), la generamos y actualizamos el contador global
+                  let serieToUse = detail.Serie;
+                  if (!serieToUse || parseInt(serieToUse) <= maxSerieInThisUpdate) { // Si no tiene serie o es menor/igual a la última global
+                      maxSerieInThisUpdate++;
+                      serieToUse = String(maxSerieInThisUpdate);
+                  } else {
+                    // Si la serie ya existe y es mayor, la usamos y actualizamos el maxSerieInThisUpdate
+                    const currentProdSerie = parseInt(serieToUse);
+                    if (!isNaN(currentProdSerie) && currentProdSerie > maxSerieInThisUpdate) {
+                      maxSerieInThisUpdate = currentProdSerie;
+                    }
+                  }
 
                   return new Promise((resolveDetail, rejectDetail) => {
                     const sqlInsertDetail = `INSERT INTO Entrada2 (EntNumero, Iten, ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
@@ -304,11 +313,19 @@ const entryRepository = {
                       updatedHeader.FechaCat, // Usar FechaCat de la cabecera actualizada
                     ], function (detailErr) {
                       if (detailErr) return rejectDetail(detailErr);
-                      resolveDetail();
+                      
+                      const updateStockSql = `UPDATE Producto SET Stock = Stock + ? WHERE ProdCodigo = ?`;
+                      db.run(updateStockSql, [detail.Cantidad, detail.ProdCodigo], function(stockErr) {
+                        if (stockErr) rejectDetail(stockErr);
+                        else resolveDetail();
+                      });
                     });
                   });
                 });
                 await Promise.all(insertPromises);
+
+                // Actualizar el contador global de serie si se generaron nuevas series
+                await entryRepository.incrementarSerieGlobal(maxSerieInThisUpdate);
               }
             }
 
@@ -417,28 +434,57 @@ const entryRepository = {
             return reject(beginErr);
           }
 
-          const sqlDeleteDetails = `DELETE FROM Entrada2 WHERE EntNumero = ?`;
-          db.run(sqlDeleteDetails, [entNumero], function (err) {
+          // Obtener detalles para revertir stock antes de eliminar
+          db.all(`SELECT ProdCodigo, Cantidad FROM Entrada2 WHERE EntNumero = ?`, [entNumero], (err, details) => {
             if (err) {
               db.run("ROLLBACK;", () => reject(err));
               return;
             }
 
-            // Eliminar cabecera de Entrada1
-            const sqlDeleteEntry = `DELETE FROM Entrada1 WHERE EntNumero = ?`;
-            db.run(sqlDeleteEntry, [entNumero], function (err) {
-              if (err) {
-                db.run("ROLLBACK;", () => reject(err));
-                return;
-              }
-              db.run("COMMIT;", (commitErr) => {
-                if (commitErr) {
-                  db.run("ROLLBACK;");
-                  return reject(commitErr);
-                }
-                resolve({ message: "✅ Entrada eliminada correctamente", changes: this.changes });
+            const stockRevertPromises = details.map(detail => {
+              return new Promise((resolveStock, rejectStock) => {
+                const updateStockSql = `
+                  UPDATE Producto
+                  SET Stock = Stock - ?
+                  WHERE ProdCodigo = ?
+                `;
+                db.run(updateStockSql, [detail.Cantidad, detail.ProdCodigo], function(err) {
+                  if (err) rejectStock(err);
+                  else resolveStock();
+                });
               });
             });
+
+            Promise.all(stockRevertPromises)
+              .then(() => {
+                const sqlDeleteDetails = `DELETE FROM Entrada2 WHERE EntNumero = ?`;
+                db.run(sqlDeleteDetails, [entNumero], function (err) {
+                  if (err) {
+                    db.run("ROLLBACK;", () => reject(err));
+                    return;
+                  }
+
+                  // Eliminar cabecera de Entrada1
+                  const sqlDeleteEntry = `DELETE FROM Entrada1 WHERE EntNumero = ?`;
+                  db.run(sqlDeleteEntry, [entNumero], function (err) {
+                    if (err) {
+                      db.run("ROLLBACK;", () => reject(err));
+                      return;
+                    }
+                    db.run("COMMIT;", (commitErr) => {
+                      if (commitErr) {
+                        db.run("ROLLBACK;");
+                        return reject(commitErr);
+                      }
+                      resolve({ message: "✅ Entrada eliminada correctamente y stock revertido.", changes: this.changes });
+                    });
+                  });
+                });
+              })
+              .catch(stockErr => {
+                db.run("ROLLBACK;");
+                reject(stockErr);
+              });
           });
         });
       });
