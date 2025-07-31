@@ -16,7 +16,7 @@ const entryRepository = {
           e.Usuario,
           e.ProdCodigo,
           e.FechaCura,
-          e.TieneDetalles, -- ✅ Incluir la nueva columna
+          e.TieneDetalles, -- Incluir la nueva columna
           u.UsuNombre AS UsuarioNombre,
           p.ProdNombre AS ProdPrincipalNombre,
           tp.TipProdNombre AS ProdPrincipalTipoNombre
@@ -32,7 +32,33 @@ const entryRepository = {
         params.push(estado);
       }
 
-      sql += ` ORDER BY ${sortBy} ${order}`;
+      // Lista blanca de columnas permitidas para ordenar (para seguridad)
+      const allowedSortColumns = [
+        'e.EntNumero', 'e.Fecha', 'e.NroCorte', 'e.Estado', 'e.Comentario',
+        'e.FechaCat', 'e.Usuario', 'e.ProdCodigo',
+        'u.UsuNombre', 'p.ProdNombre', 'tp.TipProdNombre'
+      ];
+      let qualifiedSortBy = sortBy;
+      if (!sortBy.includes('.')) {
+        if (sortBy === 'UsuarioNombre') {
+          qualifiedSortBy = 'u.UsuNombre';
+        } else if (sortBy === 'ProdPrincipalNombre') {
+          qualifiedSortBy = 'p.ProdNombre';
+        } else if (sortBy === 'ProdPrincipalTipoNombre') {
+          qualifiedSortBy = 'tp.TipProdNombre';
+        } else {
+          qualifiedSortBy = `e.${sortBy}`;
+        }
+      }
+      if (!allowedSortColumns.includes(qualifiedSortBy)) {
+        qualifiedSortBy = 'e.EntNumero'; // Default seguro
+      }
+      const allowedOrderDirections = ['ASC', 'DESC'];
+      if (!allowedOrderDirections.includes(order.toUpperCase())) {
+        order = 'DESC'; // Default seguro
+      }
+
+      sql += ` ORDER BY ${qualifiedSortBy} ${order}`;
 
       db.all(sql, params, (err, rows) => {
         if (err) reject(err);
@@ -45,7 +71,7 @@ const entryRepository = {
   getEntryByNumber: (entNumero) => {
     return new Promise((resolve, reject) => {
       const sql = `
-        SELECT e.EntNumero, e.Fecha, e.NroCorte, e.Estado, e.Comentario, e.FechaCat, e.Usuario, e.ProdCodigo, e.FechaCura, e.TieneDetalles, -- ✅ Incluir la nueva columna
+        SELECT e.EntNumero, e.Fecha, e.NroCorte, e.Estado, e.Comentario, e.FechaCat, e.Usuario, e.ProdCodigo, e.FechaCura, e.TieneDetalles,
               u.UsuNombre AS UsuarioNombre,
               p.ProdNombre AS ProdPrincipalNombre, tp.TipProdNombre AS ProdPrincipalTipoNombre
         FROM Entrada1 e
@@ -81,7 +107,7 @@ const entryRepository = {
     });
   },
 
-  // ✅ NUEVO MÉTODO: Obtener la única entrada con estado 'Abierto'
+  // Obtener la única entrada con estado 'Abierto'
   getSingleOpenEntry: () => {
     return new Promise((resolve, reject) => {
       const sql = `
@@ -136,7 +162,6 @@ const entryRepository = {
   createEntry: (entryData) => {
     return new Promise((resolve, reject) => {
       const { Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, FechaCura } = entryData;
-      // productosSeleccionados no se usa aquí, ya que el supervisor solo crea la cabecera
       const tieneDetalles = 0; // Siempre 0 al crear solo la cabecera
 
       db.serialize(async () => {
@@ -249,7 +274,7 @@ const entryRepository = {
             });
 
             // 4. Actualizar detalles si productosSeleccionados están presentes en el payload
-            if (productosSeleccionados !== undefined) { 
+            if (productosSeleccionados !== undefined) {
               // Obtener detalles actuales para revertir stock
               const oldDetails = await new Promise((resolveOldDetails, rejectOldDetails) => {
                 db.all(`SELECT ProdCodigo, Cantidad FROM Entrada2 WHERE EntNumero = ?`, [entNumero], (err, rows) => {
@@ -282,7 +307,7 @@ const entryRepository = {
               // Insertar nuevos detalles y actualizar stock
               if (productosSeleccionados.length > 0) {
                 let maxSerieInThisUpdate = await entryRepository.obtenerUltimaSerie(); // Obtener la serie global actual
-                
+
                 const insertPromises = productosSeleccionados.map(async detail => {
                   // Si la serie del detalle es nueva (no venía de la DB), la generamos y actualizamos el contador global
                   let serieToUse = detail.Serie;
@@ -313,7 +338,7 @@ const entryRepository = {
                       updatedHeader.FechaCat, // Usar FechaCat de la cabecera actualizada
                     ], function (detailErr) {
                       if (detailErr) return rejectDetail(detailErr);
-                      
+
                       const updateStockSql = `UPDATE Producto SET Stock = Stock + ? WHERE ProdCodigo = ?`;
                       db.run(updateStockSql, [detail.Cantidad, detail.ProdCodigo], function(stockErr) {
                         if (stockErr) rejectDetail(stockErr);
@@ -347,7 +372,7 @@ const entryRepository = {
     });
   },
 
-  // ✅ NUEVO MÉTODO: Verificar si una entrada tiene detalles
+  // Verificar si una entrada tiene detalles
   checkIfEntryHasDetails: (entNumero) => {
     return new Promise((resolve, reject) => {
       const sql = `SELECT COUNT(*) AS count FROM Entrada2 WHERE EntNumero = ?`;
@@ -476,7 +501,7 @@ const entryRepository = {
                         db.run("ROLLBACK;");
                         return reject(commitErr);
                       }
-                      resolve({ message: "✅ Entrada eliminada correctamente y stock revertido.", changes: this.changes });
+                      resolve({ message: "🗑️ Entrada eliminada correctamente y stock revertido.", changes: this.changes });
                     });
                   });
                 });
@@ -487,6 +512,20 @@ const entryRepository = {
               });
           });
         });
+      });
+    });
+  },
+
+  // Verificar si existe al menos una entrada con estado 'Abierto'
+  hasOpenEntry: () => {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT COUNT(*) AS count FROM Entrada1 WHERE Estado = 'Abierto'`;
+      db.get(sql, [], (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row.count > 0);
+        }
       });
     });
   },

@@ -55,6 +55,9 @@ export default function Lista_Entradas({ usuario }) {
   const [modalType, setModalType] = useState(''); // 'success', 'error', 'confirm'
   const [modalAction, setModalAction] = useState(null); // Función a ejecutar al confirmar
 
+  // Nuevo estado para controlar si ya existe una entrada abierta
+  const [hasOpenEntryExists, setHasOpenEntryExists] = useState(false);
+
   const fetchEntradas = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/entrada?sortBy=${sortColumn}&order=${sortDirection}`);
@@ -72,8 +75,24 @@ export default function Lista_Entradas({ usuario }) {
     }
   };
 
+  const checkOpenEntryStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/entrada/check-open-entry`);
+      const data = await res.json();
+      if (res.ok) {
+        setHasOpenEntryExists(data.exists);
+      } else {
+        console.error("Error al verificar entrada abierta:", data.error);
+      }
+    } catch (err) {
+      console.error("Error de conexión al verificar entrada abierta:", err);
+    }
+  };
+
+
   useEffect(() => {
     fetchEntradas();
+    checkOpenEntryStatus(); // Verificar al cargar la lista
   }, [sortColumn, sortDirection]);
 
   const fetchDetalles = async (entNumero) => {
@@ -115,6 +134,7 @@ export default function Lista_Entradas({ usuario }) {
         setModalMessage(`✅ ${data.message}`);
         setModalType('success');
         fetchEntradas(); // Recargar la lista de entradas
+        checkOpenEntryStatus(); // Re-verificar estado de entradas abiertas
       } else {
         setModalMessage(`❌ Error: ${data.error || 'No se pudo eliminar la entrada.'}`);
         setModalType('error');
@@ -147,6 +167,7 @@ export default function Lista_Entradas({ usuario }) {
         setModalMessage(`✅ Entrada ${entNumero} cerrada correctamente.`);
         setModalType('success');
         fetchEntradas(); // Recargar la lista de entradas
+        checkOpenEntryStatus(); // Re-verificar estado de entradas abiertas
       } else {
         setModalMessage(`❌ Error al cerrar entrada ${entNumero}: ${data.error || 'Error desconocido.'}`);
         setModalType('error');
@@ -217,7 +238,9 @@ export default function Lista_Entradas({ usuario }) {
         {(usuario?.rol === 'supervisor' || usuario?.rol === 'admin') && (
           <button
             onClick={irARegistroEntrada}
-            className="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 transition-colors shadow-md text-lg font-medium flex items-center gap-2"
+            className={`bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 transition-colors shadow-md text-lg font-medium flex items-center gap-2
+              ${hasOpenEntryExists ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={hasOpenEntryExists}
           >
             <Plus size={20} /> Nueva Entrada
           </button>
@@ -284,7 +307,7 @@ export default function Lista_Entradas({ usuario }) {
                           <Edit size={16} /> Editar
                         </button>
                       )}
-                      {/* Botón Cerrar solo para Supervisor y Admin, si la entrada está Abierta y tiene detalles */}
+                      {/* Botón Cerrar para Supervisor y Admin, si la entrada está Abierta y tiene detalles */}
                       {(usuario?.rol === 'supervisor' || usuario?.rol === 'admin') && ent.Estado === 'Abierto' && ent.TieneDetalles === 1 && (
                         <button
                           onClick={() => closeEntry(ent.EntNumero)}

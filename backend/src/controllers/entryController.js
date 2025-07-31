@@ -43,7 +43,7 @@ const entryController = {
     }
   },
 
-  // ✅ NUEVO MÉTODO: Obtener la única entrada con estado 'Abierto'
+  // Obtener la única entrada con estado 'Abierto'
   getSingleOpenEntry: async (req, res) => {
     try {
       const openEntry = await entryRepository.getSingleOpenEntry();
@@ -63,6 +63,18 @@ const entryController = {
     if (!Fecha || !NroCorte) {
       return res.status(400).json({ error: "⚠️ Faltan campos obligatorios de la cabecera (Fecha, NroCorte)." });
     }
+
+    // Control: No permitir crear si ya existe una entrada "Abierto"
+    try {
+      const hasOpen = await entryRepository.hasOpenEntry();
+      if (hasOpen) {
+        return res.status(409).json({ error: "⚠️ Ya existe una entrada con estado 'Abierto'. Cierre o anule la entrada existente antes de crear una nueva." });
+      }
+    } catch (err) {
+      console.error("❌ Error al verificar entradas abiertas:", err.message);
+      return res.status(500).json({ error: "Error interno del servidor al verificar entradas abiertas." });
+    }
+
     try {
       const result = await entryRepository.createEntry(req.body);
       res.status(201).json(result);
@@ -93,7 +105,7 @@ const entryController = {
       // Si productosSeleccionados no está presente, significa que es una actualización de solo cabecera.
       // Si está presente, es una actualización de detalles (o completa).
       if (productosSeleccionados === undefined) {
-        delete payload.productosSeleccionados; 
+        delete payload.productosSeleccionados;
       }
 
       const result = await entryRepository.updateEntry(entNumero, payload);
@@ -167,6 +179,17 @@ const entryController = {
     } catch (err) {
       console.error("❌ Error al obtener últimas entradas:", err.message);
       res.status(500).json({ error: "Error al obtener últimas entradas." });
+    }
+  },
+
+  // Para verificar si existe una entrada con estado 'Abierto'
+  hasOpenEntry: async (req, res) => {
+    try {
+      const exists = await entryRepository.hasOpenEntry();
+      res.json({ exists: exists });
+    } catch (err) {
+      console.error("❌ Error al verificar entradas abiertas:", err.message);
+      res.status(500).json({ error: "Error interno del servidor al verificar entradas abiertas." });
     }
   },
 };

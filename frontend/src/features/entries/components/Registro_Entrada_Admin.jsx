@@ -48,7 +48,7 @@ const formatDateToYYYYMMDDHHMMSS = (inputDate, format = 'YYYY-MM-DD HH:mm:ss') =
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
-// ✅ Función para sumar horas a una fecha (objeto Date) y devolver un string YYYY-MM-DD HH:mm:ss
+// Función para sumar horas a una fecha (objeto Date) y devolver un string YYYY-MM-DD HH:mm:ss
 function addHoursToDateTimeString(baseDate, hoursToAdd) {
   if (!(baseDate instanceof Date) || hoursToAdd === undefined || hoursToAdd === null || isNaN(hoursToAdd)) {
     return ''; // Retorna cadena vacía para entrada inválida
@@ -88,8 +88,9 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
   const [editando, setEditando] = useState(false);
   const [nextGlobalSerie, setNextGlobalSerie] = useState(0);
   const [tieneDetalles, setTieneDetalles] = useState(0); // Para saber si tiene detalles cargados
+  // ✅ Nuevo estado para controlar si ya existe una entrada abierta
+  const [hasOpenEntryExists, setHasOpenEntryExists] = useState(false);
 
-  // Cargar productos disponibles y datos de la entrada si es edición
   useEffect(() => {
     // Cargar productos disponibles
     fetch(`${API_BASE_URL}/producto`, {
@@ -117,6 +118,35 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
       }
     };
     fetchGlobalSerie();
+
+    // ✅ Verificar si ya existe una entrada abierta (solo si no estamos editando)
+    const checkOpenEntryStatus = async () => {
+      if (!entNumeroParam) { // Solo si estamos en modo creación
+        try {
+          const res = await fetch(`${API_BASE_URL}/entrada/check-open-entry`);
+          const data = await res.json();
+          if (res.ok) {
+            setHasOpenEntryExists(data.exists);
+            if (data.exists) {
+              setTipoMensaje('info');
+              setMensaje('⚠️ Ya existe una entrada con estado "Abierto". No se puede crear una nueva hasta que la existente sea cerrada o anulada.');
+            } else {
+              setMensaje(''); // Limpiar mensaje si no hay entradas abiertas
+            }
+          } else {
+            console.error("Error al verificar entrada abierta:", data.error);
+            setTipoMensaje('error');
+            setMensaje('❌ Error al verificar el estado de entradas abiertas.');
+          }
+        } catch (err) {
+          console.error("Error de conexión al verificar entrada abierta:", err);
+          setTipoMensaje('error');
+          setMensaje('❌ No se pudo conectar al servidor para verificar entradas abiertas.');
+        }
+      }
+    };
+    checkOpenEntryStatus();
+
 
     // Lógica para cargar datos si estamos editando
     if (entNumeroParam) {
@@ -273,6 +303,13 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
       return;
     }
 
+    // ✅ Control adicional para no permitir crear si ya existe una entrada abierta
+    if (!editando && hasOpenEntryExists) {
+      setTipoMensaje('error');
+      setMensaje('❌ No se puede crear una nueva entrada porque ya existe una con estado "Abierto".');
+      return;
+    }
+
     const { Fecha, NroCorte, ProdCodigo, FechaCura } = formCabecera;
     if (!Fecha || !NroCorte || !ProdCodigo || !FechaCura) {
         setTipoMensaje('error');
@@ -362,6 +399,8 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
         if (resSerie.ok) {
           setNextGlobalSerie(dataSerie.globalSerie + 1);
         }
+        // ✅ Volver a verificar el estado de entradas abiertas después de una creación exitosa
+        setHasOpenEntryExists(true); // Asumimos que la recién creada está abierta
       }
       
       setTimeout(() => {
@@ -384,6 +423,14 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 rounded-lg shadow-md">
+        {/* Mensaje de advertencia si ya existe una entrada abierta */}
+        {!editando && hasOpenEntryExists && (
+          <div className="p-3 mb-4 rounded-md bg-yellow-100 text-yellow-700 flex items-center gap-2">
+            <span className="text-lg font-bold">!</span>
+            {mensaje} {/* Muestra el mensaje de advertencia */}
+          </div>
+        )}
+
         {/* Sección de Cabecera de Entrada */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -396,6 +443,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
               onChange={handleCabeceraChange}
               className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
               required
+              disabled={editando || hasOpenEntryExists} // Deshabilitado si estamos editando o si ya hay una abierta
             />
           </div>
           <div>
@@ -407,9 +455,9 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
               placeholder="Ej: C-001"
               value={formCabecera.NroCorte}
               onChange={handleCabeceraChange}
-              className={`mt-1 block w-full p-2 border rounded-md shadow-sm ${editando ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-blue-500 focus:border-blue-500'} ${nroCorteError ? 'border-red-500' : 'border-gray-300'}`}
+              className={`mt-1 block w-full p-2 border rounded-md shadow-sm ${editando || hasOpenEntryExists ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-blue-500 focus:border-blue-500'} ${nroCorteError ? 'border-red-500' : 'border-gray-300'}`}
               required
-              readOnly={editando} // NroCorte no editable en edición
+              readOnly={editando || hasOpenEntryExists} // NroCorte no editable en edición o si ya hay una abierta
             />
             {nroCorteError && <p className="text-red-500 text-xs mt-1">{nroCorteError}</p>}
           </div>
@@ -440,6 +488,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
               onChange={handleCabeceraChange}
               className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
               required
+              disabled={editando || hasOpenEntryExists} // Deshabilita el selector visualmente en edición o si ya hay una abierta
             >
               <option value="">Seleccione un producto principal</option>
               {productosDisponibles.map(p => (
@@ -471,6 +520,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
               onChange={handleCabeceraChange}
               rows="2"
               className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
             ></textarea>
           </div>
         </div>
@@ -528,6 +578,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
                 onChange={e => handleProductoChange(index, 'Cantidad', e.target.value)}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                 required
+                disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
               />
             </div>
             <div>
@@ -539,6 +590,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
                 onChange={e => handleProductoChange(index, 'Fecha', e.target.value)}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                 required
+                disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
               />
             </div>
             <div>
@@ -561,6 +613,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
                 value={item.FechaIngr}
                 onChange={e => handleProductoChange(index, 'FechaIngr', e.target.value)}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
               />
             </div>
             <div>
@@ -571,6 +624,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
                 onChange={e => handleProductoChange(index, 'Estado', e.target.value)}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                 required
+                disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
               >
                 <option value="Activo">Activo</option>
                 <option value="Inactivo">Inactivo</option>
@@ -581,6 +635,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
                 type="button"
                 onClick={() => handleEliminarProducto(index)}
                 className="w-full bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 transition-colors shadow-sm text-sm flex items-center justify-center gap-1"
+                disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
               >
                 <Trash2 size={16} /> Eliminar
               </button>
@@ -594,6 +649,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
             type="button"
             onClick={handleAgregarProducto}
             className="bg-green-600 text-white px-5 py-2 rounded-md hover:bg-green-700 transition-colors shadow-md text-base font-medium flex items-center gap-2"
+            disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
           >
             <Plus size={20} /> Agregar Producto
           </button>
@@ -601,6 +657,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
             type="button"
             onClick={() => setProductosSeleccionados([])}
             className="bg-gray-400 text-white px-5 py-2 rounded-md hover:bg-gray-600 transition-colors shadow-md text-base font-medium"
+            disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
           >
             Limpiar Productos
           </button>
@@ -611,6 +668,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
           <button
             type="submit"
             className="w-full max-w-xs bg-blue-600 text-white py-3 px-6 rounded-md shadow-lg text-lg font-semibold hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
           >
             {editando ? 'Actualizar Entrada' : 'Registrar Entrada'}
           </button>
@@ -618,7 +676,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
 
         {/* Mensaje de feedback */}
         {mensaje && (
-          <p className={`text-base text-center mt-4 ${tipoMensaje === 'success' ? 'text-green-600' : 'text-red-500'}`}>
+          <p className={`text-base text-center mt-4 ${tipoMensaje === 'success' ? 'text-green-600' : tipoMensaje === 'info' ? 'text-yellow-700' : 'text-red-500'}`}>
             {mensaje}
           </p>
         )}

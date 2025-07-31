@@ -86,6 +86,8 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
   const [nroCorteError, setNroCorteError] = useState('');
   const [editando, setEditando] = useState(false);
   const [tieneDetalles, setTieneDetalles] = useState(0); // Para saber si tiene detalles cargados
+  // ✅ Nuevo estado para controlar si ya existe una entrada abierta
+  const [hasOpenEntryExists, setHasOpenEntryExists] = useState(false);
 
   useEffect(() => {
     // Cargar productos disponibles
@@ -98,6 +100,34 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
         setTipoMensaje('error');
         setMensaje('❌ Error al cargar productos disponibles.');
       });
+
+    // ✅ Verificar si ya existe una entrada abierta (solo si no estamos editando)
+    const checkOpenEntryStatus = async () => {
+      if (!entNumeroParam) { // Solo si estamos en modo creación
+        try {
+          const res = await fetch(`${API_BASE_URL}/entrada/check-open-entry`);
+          const data = await res.json();
+          if (res.ok) {
+            setHasOpenEntryExists(data.exists);
+            if (data.exists) {
+              setTipoMensaje('info');
+              setMensaje('⚠️ Ya existe una entrada con estado "Abierto". No se puede crear una nueva hasta que la existente sea cerrada o anulada.');
+            } else {
+              setMensaje(''); // Limpiar mensaje si no hay entradas abiertas
+            }
+          } else {
+            console.error("Error al verificar entrada abierta:", data.error);
+            setTipoMensaje('error');
+            setMensaje('❌ Error al verificar el estado de entradas abiertas.');
+          }
+        } catch (err) {
+          console.error("Error de conexión al verificar entrada abierta:", err);
+          setTipoMensaje('error');
+          setMensaje('❌ No se pudo conectar al servidor para verificar entradas abiertas.');
+        }
+      }
+    };
+    checkOpenEntryStatus();
 
     // Si estamos editando una entrada existente (Supervisor solo puede cambiar estado)
     if (entNumeroParam) {
@@ -193,6 +223,13 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
       return;
     }
 
+    // ✅ Control adicional para no permitir crear si ya existe una entrada abierta
+    if (!editando && hasOpenEntryExists) {
+      setTipoMensaje('error');
+      setMensaje('❌ No se puede crear una nueva entrada porque ya existe una con estado "Abierto".');
+      return;
+    }
+
     const { Fecha, NroCorte, ProdCodigo, FechaCura } = formCabecera;
     if (!Fecha || !NroCorte || !ProdCodigo || !FechaCura) {
       setTipoMensaje('error');
@@ -258,6 +295,8 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
           ProdCodigo: '',
           FechaCura: '', // Resetear FechaCura
         });
+        // ✅ Volver a verificar el estado de entradas abiertas después de una creación exitosa
+        setHasOpenEntryExists(true); // Asumimos que la recién creada está abierta
       }
       
       setTimeout(() => {
@@ -280,6 +319,14 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
       </h2>
 
       <form onSubmit={handleSubmitCabecera} className="space-y-6 bg-white p-6 rounded-lg shadow-md">
+        {/* Mensaje de advertencia si ya existe una entrada abierta */}
+        {!editando && hasOpenEntryExists && (
+          <div className="p-3 mb-4 rounded-md bg-yellow-100 text-yellow-700 flex items-center gap-2">
+            <span className="text-lg font-bold">!</span>
+            {mensaje} {/* Muestra el mensaje de advertencia */}
+          </div>
+        )}
+
         {/* Sección de Cabecera de Entrada */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -293,6 +340,7 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
               className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 cursor-not-allowed"
               required
               readOnly // Supervisor no edita la fecha después de la creación
+              disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
             />
           </div>
           <div>
@@ -304,9 +352,9 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
               placeholder="Ej: C-001"
               value={formCabecera.NroCorte}
               onChange={handleCabeceraChange}
-              className={`mt-1 block w-full p-2 border rounded-md shadow-sm ${editando ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-blue-500 focus:border-blue-500'} ${nroCorteError ? 'border-red-500' : 'border-gray-300'}`}
+              className={`mt-1 block w-full p-2 border rounded-md shadow-sm ${editando || hasOpenEntryExists ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-blue-500 focus:border-blue-500'} ${nroCorteError ? 'border-red-500' : 'border-gray-300'}`}
               required
-              readOnly={editando} // NroCorte editable en creación, no editable en edición
+              readOnly={editando || hasOpenEntryExists} // NroCorte editable en creación, no editable en edición o si ya hay una abierta
             />
             {nroCorteError && <p className="text-red-500 text-xs mt-1">{nroCorteError}</p>}
           </div>
@@ -337,7 +385,7 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
               onChange={handleCabeceraChange}
               className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
               required
-              disabled={editando} // Deshabilita el selector visualmente en edición
+              disabled={editando || hasOpenEntryExists} // Deshabilita el selector visualmente en edición o si ya hay una abierta
             >
               <option value="">Seleccione un producto principal</option>
               {productosDisponibles.map(p => (
@@ -369,7 +417,7 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
               onChange={handleCabeceraChange}
               rows="2"
               className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              // ✅ Eliminado el atributo readOnly para que el supervisor pueda editarlo
+              disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
             ></textarea>
           </div>
         </div>
@@ -393,6 +441,7 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
           <button
             type="submit"
             className="w-full max-w-xs bg-blue-600 text-white py-3 px-6 rounded-md shadow-lg text-lg font-semibold hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            disabled={hasOpenEntryExists && !editando} // Deshabilitado en creación si ya hay una abierta
           >
             {editando ? 'Actualizar Estado' : 'Registrar Cabecera'}
           </button>
@@ -400,7 +449,7 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
 
         {/* Mensaje de feedback */}
         {mensaje && (
-          <p className={`text-base text-center mt-4 ${tipoMensaje === 'success' ? 'text-green-600' : 'text-red-500'}`}>
+          <p className={`text-base text-center mt-4 ${tipoMensaje === 'success' ? 'text-green-600' : tipoMensaje === 'info' ? 'text-yellow-700' : 'text-red-500'}`}>
             {mensaje}
           </p>
         )}
