@@ -215,10 +215,85 @@ const entryRepository = {
     });
   },
 
+  // ✅ NUEVA FUNCIÓN: Agregar un detalle a una entrada existente
+  addEntryDetail: (entNumero, detailData) => {
+    return new Promise((resolve, reject) => {
+      db.serialize(() => {
+        db.run("BEGIN TRANSACTION;", async (beginErr) => {
+          if (beginErr) {
+            return reject(beginErr);
+          }
+
+          try {
+            const { ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat } = detailData;
+
+            // 1. Obtener el próximo Iten para esta entrada
+            const maxItenRow = await new Promise((resMaxIten, rejMaxIten) => {
+              db.get(`SELECT MAX(Iten) AS maxIten FROM Entrada2 WHERE EntNumero = ?`, [entNumero], (err, row) => {
+                if (err) rejMaxIten(err);
+                else resMaxIten(row);
+              });
+            });
+            const nextIten = (maxItenRow && maxItenRow.maxIten) ? maxItenRow.maxIten + 1 : 1;
+
+            // 2. Insertar el nuevo detalle en Entrada2
+            const sqlInsertDetail = `
+              INSERT INTO Entrada2 (EntNumero, Iten, ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+            await new Promise((resInsert, rejInsert) => {
+              db.run(sqlInsertDetail, [
+                entNumero, nextIten, ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat
+              ], function (err) {
+                if (err) rejInsert(err);
+                else resInsert();
+              });
+            });
+
+            // 3. Actualizar el stock del producto
+            const sqlUpdateStock = `UPDATE Producto SET Stock = Stock + ? WHERE ProdCodigo = ?`;
+            await new Promise((resStock, rejStock) => {
+              db.run(sqlUpdateStock, [Cantidad, ProdCodigo], function (err) {
+                if (err) rejStock(err);
+                else resStock();
+              });
+            });
+
+            // 4. Asegurarse de que TieneDetalles en Entrada1 sea 1
+            const sqlUpdateTieneDetalles = `UPDATE Entrada1 SET TieneDetalles = 1 WHERE EntNumero = ? AND TieneDetalles = 0`;
+            await new Promise((resUpdate, rejUpdate) => {
+              db.run(sqlUpdateTieneDetalles, [entNumero], function (err) {
+                if (err) rejUpdate(err);
+                else resUpdate();
+              });
+            });
+
+            // 5. Confirmar la transacción
+            db.run("COMMIT;", (commitErr) => {
+              if (commitErr) {
+                db.run("ROLLBACK;");
+                return reject(commitErr);
+              }
+              resolve({ message: "✅ Detalle de entrada registrado correctamente y stock actualizado.", Iten: nextIten });
+            });
+
+          } catch (err) {
+            db.run("ROLLBACK;");
+            reject(err);
+          }
+        });
+      });
+    });
+  },
+
+
   // Actualizar una entrada (cabecera y/o detalles)
+  // Este método ahora se usará principalmente para actualizar la cabecera
+  // o para la lógica de "limpiar todos los detalles" si se implementa.
+  // La adición de detalles individuales se hará con addEntryDetail.
   updateEntry: (entNumero, entryData) => {
     return new Promise(async (resolve, reject) => {
-      const { productosSeleccionados } = entryData;
+      const { productosSeleccionados, ...headerData } = entryData; // Separamos productosSeleccionados
 
       db.serialize(async () => {
         db.run("BEGIN TRANSACTION;", async (beginErr) => {
@@ -234,46 +309,56 @@ const entryRepository = {
               return reject(new Error("Entrada no encontrada para actualizar."));
             }
 
-            // 2. Fusionar los datos existentes con los datos recibidos
-            // Solo actualizamos los campos si están presentes en entryData
-            const updatedHeader = {
-              Fecha: entryData.Fecha !== undefined ? entryData.Fecha : currentEntry.Fecha,
-              NroCorte: entryData.NroCorte !== undefined ? entryData.NroCorte : currentEntry.NroCorte,
-              Estado: entryData.Estado !== undefined ? entryData.Estado : currentEntry.Estado,
-              Comentario: entryData.Comentario !== undefined ? entryData.Comentario : currentEntry.Comentario,
-              FechaCat: entryData.FechaCat !== undefined ? entryData.FechaCat : currentEntry.FechaCat,
-              Usuario: entryData.Usuario !== undefined ? entryData.Usuario : currentEntry.Usuario,
-              ProdCodigo: entryData.ProdCodigo !== undefined ? entryData.ProdCodigo : currentEntry.ProdCodigo,
-              FechaCura: entryData.FechaCura !== undefined ? entryData.FechaCura : currentEntry.FechaCura,
-              // TieneDetalles se actualiza si se envían productos o si se envía explícitamente
-              TieneDetalles: (productosSeleccionados !== undefined) ? (productosSeleccionados.length > 0 ? 1 : 0) : currentEntry.TieneDetalles
-            };
+            // 2. Actualizar la cabecera si hay datos de cabecera en headerData
+            if (Object.keys(headerData).length > 0) {
+              let sqlUpdateEntrada1 = `UPDATE Entrada1 SET FechaCat = ?, Usuario = ?`;
+              const paramsEntrada1 = [headerData.FechaCat !== undefined ? headerData.FechaCat : currentEntry.FechaCat, headerData.Usuario !== undefined ? headerData.Usuario : currentEntry.Usuario];
 
-            // 3. Actualizar la cabecera con los datos fusionados
-            const sqlUpdateEntry = `
-              UPDATE Entrada1
-              SET Fecha = ?, NroCorte = ?, Estado = ?, Comentario = ?, FechaCat = ?, Usuario = ?, ProdCodigo = ?, FechaCura = ?, TieneDetalles = ?
-              WHERE EntNumero = ?
-            `;
-            await new Promise((resolveRun, rejectRun) => {
-              db.run(sqlUpdateEntry, [
-                updatedHeader.Fecha,
-                updatedHeader.NroCorte,
-                updatedHeader.Estado,
-                updatedHeader.Comentario,
-                updatedHeader.FechaCat,
-                updatedHeader.Usuario,
-                updatedHeader.ProdCodigo,
-                updatedHeader.FechaCura,
-                updatedHeader.TieneDetalles,
-                entNumero,
-              ], function (err) {
-                if (err) return rejectRun(err);
-                resolveRun();
+              if (headerData.Fecha !== undefined) {
+                sqlUpdateEntrada1 += `, Fecha = ?`;
+                paramsEntrada1.push(headerData.Fecha);
+              }
+              if (headerData.NroCorte !== undefined) {
+                sqlUpdateEntrada1 += `, NroCorte = ?`;
+                paramsEntrada1.push(headerData.NroCorte);
+              }
+              if (headerData.Estado !== undefined) {
+                sqlUpdateEntrada1 += `, Estado = ?`;
+                paramsEntrada1.push(headerData.Estado);
+              }
+              if (headerData.Comentario !== undefined) {
+                sqlUpdateEntrada1 += `, Comentario = ?`;
+                paramsEntrada1.push(headerData.Comentario);
+              }
+              if (headerData.ProdCodigo !== undefined) {
+                sqlUpdateEntrada1 += `, ProdCodigo = ?`;
+                paramsEntrada1.push(headerData.ProdCodigo);
+              }
+              if (headerData.FechaCura !== undefined) {
+                sqlUpdateEntrada1 += `, FechaCura = ?`;
+                paramsEntrada1.push(headerData.FechaCura);
+              }
+              
+              // Si se envían productosSeleccionados (para reemplazar), actualizar TieneDetalles a 1
+              // Si productosSeleccionados es un array vacío, actualizar TieneDetalles a 0
+              if (productosSeleccionados !== undefined) {
+                  sqlUpdateEntrada1 += `, TieneDetalles = ?`;
+                  paramsEntrada1.push(productosSeleccionados.length > 0 ? 1 : 0);
+              }
+
+
+              sqlUpdateEntrada1 += ` WHERE EntNumero = ?`;
+              paramsEntrada1.push(entNumero);
+
+              await new Promise((resolveUpdate, rejectUpdate) => {
+                db.run(sqlUpdateEntrada1, paramsEntrada1, function (err) {
+                  if (err) return rejectUpdate(err);
+                  resolveUpdate();
+                });
               });
-            });
+            }
 
-            // 4. Actualizar detalles si productosSeleccionados están presentes en el payload
+            // 3. Si productosSeleccionados está presente, significa que se quieren reemplazar los detalles
             if (productosSeleccionados !== undefined) {
               // Obtener detalles actuales para revertir stock
               const oldDetails = await new Promise((resolveOldDetails, rejectOldDetails) => {
@@ -304,18 +389,16 @@ const entryRepository = {
                 });
               });
 
-              // Insertar nuevos detalles y actualizar stock
+              // Insertar los nuevos detalles y actualizar stock
               if (productosSeleccionados.length > 0) {
                 let maxSerieInThisUpdate = await entryRepository.obtenerUltimaSerie(); // Obtener la serie global actual
 
                 const insertPromises = productosSeleccionados.map(async detail => {
-                  // Si la serie del detalle es nueva (no venía de la DB), la generamos y actualizamos el contador global
                   let serieToUse = detail.Serie;
-                  if (!serieToUse || parseInt(serieToUse) <= maxSerieInThisUpdate) { // Si no tiene serie o es menor/igual a la última global
+                  if (!serieToUse || parseInt(serieToUse) <= maxSerieInThisUpdate) {
                       maxSerieInThisUpdate++;
                       serieToUse = String(maxSerieInThisUpdate);
                   } else {
-                    // Si la serie ya existe y es mayor, la usamos y actualizamos el maxSerieInThisUpdate
                     const currentProdSerie = parseInt(serieToUse);
                     if (!isNaN(currentProdSerie) && currentProdSerie > maxSerieInThisUpdate) {
                       maxSerieInThisUpdate = currentProdSerie;
@@ -331,11 +414,11 @@ const entryRepository = {
                       serieToUse,
                       detail.Cantidad,
                       detail.Fecha,
-                      updatedHeader.FechaCura, // Usar FechaCura de la cabecera actualizada
+                      headerData.FechaCura !== undefined ? headerData.FechaCura : currentEntry.FechaCura, // Usar FechaCura de la cabecera actualizada
                       detail.FechaIngr,
                       detail.Estado,
-                      updatedHeader.Usuario, // Usar Usuario de la cabecera actualizada
-                      updatedHeader.FechaCat, // Usar FechaCat de la cabecera actualizada
+                      headerData.Usuario !== undefined ? headerData.Usuario : currentEntry.Usuario, // Usar Usuario de la cabecera actualizada
+                      headerData.FechaCat !== undefined ? headerData.FechaCat : currentEntry.FechaCat, // Usar FechaCat de la cabecera actualizada
                     ], function (detailErr) {
                       if (detailErr) return rejectDetail(detailErr);
 
@@ -349,12 +432,11 @@ const entryRepository = {
                 });
                 await Promise.all(insertPromises);
 
-                // Actualizar el contador global de serie si se generaron nuevas series
                 await entryRepository.incrementarSerieGlobal(maxSerieInThisUpdate);
               }
             }
 
-            // 5. Confirmar la transacción
+            // 4. Confirmar la transacción
             db.run("COMMIT;", (commitErr) => {
               if (commitErr) {
                 db.run("ROLLBACK;");
@@ -402,7 +484,6 @@ const entryRepository = {
   },
 
   // Insertar o actualizar la serie global (sobrescribir el único registro con id=1)
-  // Solo se llama al registrar la entrada principal
   incrementarSerieGlobal: (nuevaSerie) => {
     return new Promise((resolve, reject) => {
       const sql = `INSERT OR REPLACE INTO Parametro (id, serie) VALUES (1, ?)`;

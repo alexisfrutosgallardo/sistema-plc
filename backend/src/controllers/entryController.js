@@ -87,6 +87,24 @@ const entryController = {
     }
   },
 
+  // ✅ NUEVO MÉTODO: Agregar un detalle a una entrada existente
+  addEntryDetail: async (req, res) => {
+    const { entNumero } = req.params;
+    const detailData = req.body; // Un solo objeto de detalle
+
+    if (!entNumero || !detailData.ProdCodigo || !detailData.Serie || !detailData.Cantidad || !detailData.Fecha || !detailData.FechaCura || !detailData.Estado) {
+      return res.status(400).json({ error: "⚠️ Faltan campos obligatorios para el detalle de la entrada." });
+    }
+
+    try {
+      const result = await entryRepository.addEntryDetail(parseInt(entNumero), detailData);
+      res.status(201).json(result);
+    } catch (err) {
+      console.error("❌ Error al agregar detalle de entrada:", err.message);
+      res.status(500).json({ error: "Error al agregar el detalle de la entrada." });
+    }
+  },
+
   // Actualizar una entrada existente (flexible para cabecera y/o detalles)
   updateEntry: async (req, res) => {
     const { entNumero } = req.params;
@@ -105,10 +123,10 @@ const entryController = {
       // Si productosSeleccionados no está presente, significa que es una actualización de solo cabecera.
       // Si está presente, es una actualización de detalles (o completa).
       if (productosSeleccionados === undefined) {
-        delete payload.productosSeleccionados;
+        delete payload.productosSeleccionados; // Asegurarse de que no se envíe si no se pretende actualizar detalles
       }
 
-      const result = await entryRepository.updateEntry(entNumero, payload);
+      const result = await entryRepository.updateEntry(parseInt(entNumero), payload);
       res.json(result);
     } catch (err) {
       console.error("❌ Error al actualizar entrada:", err.message);
@@ -149,7 +167,7 @@ const entryController = {
   deleteEntry: async (req, res) => {
     const { entNumero } = req.params;
     try {
-      const result = await entryRepository.deleteEntry(entNumero);
+      const result = await entryRepository.deleteEntry(parseInt(entNumero));
       if (result.changes === 0) {
         return res.status(404).json({ error: "Entrada no encontrada." });
       }
