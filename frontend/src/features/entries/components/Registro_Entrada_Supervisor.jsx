@@ -321,7 +321,7 @@ export default function Registro_Entrada_Supervisor({ usuario, entNumeroParam })
       <form onSubmit={handleSubmitCabecera} className="space-y-6 bg-white p-6 rounded-lg shadow-md">
         {/* Mensaje de advertencia si ya existe una entrada abierta */}
         {!editando && hasOpenEntryExists && (
-          <div className="p-3 mb-4 rounded-md bg-yellow-100 text-yellow-700 flex items-center gap-2">
+          <div className="p-3 mb-4 rounded-md bg-green-100 text-green-700 flex items-center gap-2">
             <span className="text-lg font-bold">!</span>
             {mensaje} {/* Muestra el mensaje de advertencia */}
           </div>

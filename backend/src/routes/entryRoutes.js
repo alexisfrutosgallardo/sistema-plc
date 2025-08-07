@@ -23,8 +23,11 @@ router.get('/entrada/ultimas', entryController.getLatestEntries);
 // Ruta para obtener los NroCorte únicos de Entrada1
 router.get('/cortes-entrada1', entryController.getUniqueCortes);
 
-// ✅ NUEVA RUTA: Agregar un detalle a una entrada existente
+// Agregar un detalle a una entrada existente
 router.post('/entrada/:entNumero/detalle', entryController.addEntryDetail);
+
+// Eliminar un detalle de entrada por número de entrada y serie
+router.delete('/entrada/:entNumero/detalle/:serie', entryController.deleteEntryDetail);
 
 
 // ✅ RUTAS GENERALES (DEBEN IR DESPUÉS)
@@ -34,8 +37,8 @@ router.get('/entrada', entryController.getAllEntries);
 // Crear una nueva entrada (cabecera)
 router.post('/entrada', entryController.createEntry);
 
-// Eliminar una entrada
-router.delete('/entrada/:entNumero', entryController.deleteEntry);
+// Eliminar una entrada completa
+router.delete('/entrada/:entNumero', entryController.deleteEntry); // Esta elimina la cabecera y todos los detalles
 
 // Obtener detalles de una entrada por número (esta ruta ya existía)
 router.get('/entrada/:entNumero/detalle', entryController.getEntryDetails);

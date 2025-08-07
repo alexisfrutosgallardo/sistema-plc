@@ -16,7 +16,7 @@ const entryRepository = {
           e.Usuario,
           e.ProdCodigo,
           e.FechaCura,
-          e.TieneDetalles, -- Incluir la nueva columna
+          e.TieneDetalles,
           u.UsuNombre AS UsuarioNombre,
           p.ProdNombre AS ProdPrincipalNombre,
           tp.TipProdNombre AS ProdPrincipalTipoNombre
@@ -32,7 +32,6 @@ const entryRepository = {
         params.push(estado);
       }
 
-      // Lista blanca de columnas permitidas para ordenar (para seguridad)
       const allowedSortColumns = [
         'e.EntNumero', 'e.Fecha', 'e.NroCorte', 'e.Estado', 'e.Comentario',
         'e.FechaCat', 'e.Usuario', 'e.ProdCodigo',
@@ -163,18 +162,39 @@ const entryRepository = {
     return new Promise((resolve, reject) => {
       const { Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, FechaCura } = entryData;
       const tieneDetalles = 0; // Siempre 0 al crear solo la cabecera
-
+  
       db.serialize(async () => {
         db.run("BEGIN TRANSACTION;");
-
-        db.get(`SELECT EntNumero FROM Entrada1 ORDER BY EntNumero DESC LIMIT 1`, async (err, row) => {
-          if (err) {
-            db.run("ROLLBACK;");
-            return reject(err);
-          }
-
-          let nextEntNumero = row && row.EntNumero ? row.EntNumero + 1 : 1;
-
+  
+        try {
+          // 1. Obtener el próximo EntNumero
+          const nextEntNumero = await new Promise((res, rej) => {
+            db.get(`SELECT EntNumero FROM Entrada1 ORDER BY EntNumero DESC LIMIT 1`, (err, row) => {
+              if (err) return rej(err);
+              res(row && row.EntNumero ? row.EntNumero + 1 : 1);
+            });
+          });
+  
+          // 2. Obtener la serie actual de Parametro
+          let currentSerie = await new Promise((res, rej) => {
+            db.get(`SELECT serie FROM Parametro WHERE id = 1`, (err, row) => {
+              if (err) return rej(err);
+              res(row ? parseInt(row.serie) : 0);
+            });
+          });
+  
+          // 3. Incrementar la serie
+          const newSerie = currentSerie + 1;
+  
+          // 4. Actualizar la serie en Parametro
+          await new Promise((res, rej) => {
+            db.run(`UPDATE Parametro SET serie = ? WHERE id = 1`, [newSerie], function (err) {
+              if (err) return rej(err);
+              res();
+            });
+          });
+  
+          // 5. Insertar la nueva entrada
           const sql1 = `
             INSERT INTO Entrada1 (EntNumero, Fecha, NroCorte, Estado, Comentario, Usuario, FechaCat, ProdCodigo, FechaCura, TieneDetalles)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -183,7 +203,7 @@ const entryRepository = {
             nextEntNumero,
             Fecha,
             NroCorte,
-            Estado || 'Abierto', // Por defecto 'Abierto'
+            Estado || 'Abierto',
             Comentario,
             Usuario,
             FechaCat,
@@ -191,31 +211,36 @@ const entryRepository = {
             FechaCura,
             tieneDetalles
           ];
-
-          db.run(sql1, params1, async function (err) {
-            if (err) {
-              db.run("ROLLBACK;");
-              return reject(err);
-            }
-
-            db.run("COMMIT;", (commitErr) => {
-              if (commitErr) {
-                db.run("ROLLBACK;");
-                return reject(commitErr);
-              }
-              resolve({
-                message: "✅ Cabecera de entrada registrada correctamente",
-                EntNumero: nextEntNumero,
-                NroCorte: NroCorte
-              });
+  
+          await new Promise((res, rej) => {
+            db.run(sql1, params1, function (err) {
+              if (err) return rej(err);
+              res();
             });
           });
-        });
+  
+          db.run("COMMIT;", (commitErr) => {
+            if (commitErr) {
+              db.run("ROLLBACK;");
+              return reject(commitErr);
+            }
+            resolve({
+              message: "✅ Cabecera de entrada registrada correctamente y serie actualizada",
+              EntNumero: nextEntNumero,
+              NroCorte: NroCorte,
+              Serie: newSerie
+            });
+          });
+  
+        } catch (err) {
+          db.run("ROLLBACK;");
+          reject(err);
+        }
       });
     });
   },
 
-  // ✅ NUEVA FUNCIÓN: Agregar un detalle a una entrada existente
+  // Agregar un detalle a una entrada existente
   addEntryDetail: (entNumero, detailData) => {
     return new Promise((resolve, reject) => {
       db.serialize(() => {
@@ -223,10 +248,10 @@ const entryRepository = {
           if (beginErr) {
             return reject(beginErr);
           }
-
+  
           try {
-            const { ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat } = detailData;
-
+            const { ProdCodigo, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat } = detailData;
+  
             // 1. Obtener el próximo Iten para esta entrada
             const maxItenRow = await new Promise((resMaxIten, rejMaxIten) => {
               db.get(`SELECT MAX(Iten) AS maxIten FROM Entrada2 WHERE EntNumero = ?`, [entNumero], (err, row) => {
@@ -235,22 +260,41 @@ const entryRepository = {
               });
             });
             const nextIten = (maxItenRow && maxItenRow.maxIten) ? maxItenRow.maxIten + 1 : 1;
-
-            // 2. Insertar el nuevo detalle en Entrada2
+  
+            // 2. Obtener la serie actual de Parametro
+            let currentSerie = await new Promise((res, rej) => {
+              db.get(`SELECT serie FROM Parametro WHERE id = 1`, (err, row) => {
+                if (err) return rej(err);
+                res(row ? parseInt(row.serie) : 0);
+              });
+            });
+  
+            // 3. Incrementar la serie para este detalle
+            const newSerie = currentSerie + 1;
+  
+            // 4. Insertar el nuevo detalle en Entrada2
             const sqlInsertDetail = `
               INSERT INTO Entrada2 (EntNumero, Iten, ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
             await new Promise((resInsert, rejInsert) => {
               db.run(sqlInsertDetail, [
-                entNumero, nextIten, ProdCodigo, Serie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat
+                entNumero, nextIten, ProdCodigo, newSerie, Cantidad, Fecha, FechaCura, FechaIngr, Estado, Usuario, FechaCat
               ], function (err) {
                 if (err) rejInsert(err);
                 else resInsert();
               });
             });
-
-            // 3. Actualizar el stock del producto
+  
+            // 5. Actualizar la serie en Parametro
+            await new Promise((res, rej) => {
+              db.run(`UPDATE Parametro SET serie = ? WHERE id = 1`, [newSerie], function (err) {
+                if (err) return rej(err);
+                res();
+              });
+            });
+  
+            // 6. Actualizar el stock del producto
             const sqlUpdateStock = `UPDATE Producto SET Stock = Stock + ? WHERE ProdCodigo = ?`;
             await new Promise((resStock, rejStock) => {
               db.run(sqlUpdateStock, [Cantidad, ProdCodigo], function (err) {
@@ -258,8 +302,8 @@ const entryRepository = {
                 else resStock();
               });
             });
-
-            // 4. Asegurarse de que TieneDetalles en Entrada1 sea 1
+  
+            // 7. Asegurarse de que TieneDetalles en Entrada1 sea 1
             const sqlUpdateTieneDetalles = `UPDATE Entrada1 SET TieneDetalles = 1 WHERE EntNumero = ? AND TieneDetalles = 0`;
             await new Promise((resUpdate, rejUpdate) => {
               db.run(sqlUpdateTieneDetalles, [entNumero], function (err) {
@@ -267,16 +311,16 @@ const entryRepository = {
                 else resUpdate();
               });
             });
-
-            // 5. Confirmar la transacción
+  
+            // 8. Confirmar la transacción
             db.run("COMMIT;", (commitErr) => {
               if (commitErr) {
                 db.run("ROLLBACK;");
                 return reject(commitErr);
               }
-              resolve({ message: "✅ Detalle de entrada registrado correctamente y stock actualizado.", Iten: nextIten });
+              resolve({ message: "✅ Detalle de entrada registrado correctamente y serie actualizada.", Iten: nextIten, Serie: newSerie });
             });
-
+  
           } catch (err) {
             db.run("ROLLBACK;");
             reject(err);
@@ -288,9 +332,6 @@ const entryRepository = {
 
 
   // Actualizar una entrada (cabecera y/o detalles)
-  // Este método ahora se usará principalmente para actualizar la cabecera
-  // o para la lógica de "limpiar todos los detalles" si se implementa.
-  // La adición de detalles individuales se hará con addEntryDetail.
   updateEntry: (entNumero, entryData) => {
     return new Promise(async (resolve, reject) => {
       const { productosSeleccionados, ...headerData } = entryData; // Separamos productosSeleccionados
@@ -358,7 +399,7 @@ const entryRepository = {
               });
             }
 
-            // 3. Si productosSeleccionados está presente, significa que se quieren reemplazar los detalles
+            // Si productosSeleccionados está presente, significa que se quieren reemplazar los detalles
             if (productosSeleccionados !== undefined) {
               // Obtener detalles actuales para revertir stock
               const oldDetails = await new Promise((resolveOldDetails, rejectOldDetails) => {
@@ -607,6 +648,58 @@ const entryRepository = {
         } else {
           resolve(row.count > 0);
         }
+      });
+    });
+  },
+
+  // ✅ FUNCIÓN EXISTENTE: Eliminar un detalle de entrada por número de entrada y serie
+  deleteEntryDetail: (entNumero, serie) => {
+    return new Promise((resolve, reject) => {
+      db.serialize(() => {
+        db.run("BEGIN TRANSACTION;", (err) => {
+          if (err) return reject(err);
+
+          // 1. Obtener los detalles del producto para revertir el stock
+          const sqlGetDetail = `SELECT ProdCodigo, Cantidad FROM Entrada2 WHERE EntNumero = ? AND Serie = ?`;
+          db.get(sqlGetDetail, [entNumero, serie], (err, detail) => {
+            if (err) {
+              db.run("ROLLBACK;");
+              return reject(err);
+            }
+            if (!detail) {
+              db.run("ROLLBACK;");
+              return resolve({ message: "Detalle no encontrado.", changes: 0 });
+            }
+
+            // 2. Revertir el stock del producto
+            // Nota: Aquí se asume que la columna es 'Stock', no 'ProdStock' como en otros lugares.
+            // Asegúrate de que el nombre de la columna de stock en tu tabla 'Producto' sea consistente.
+            const sqlUpdateStock = `UPDATE Producto SET Stock = Stock - ? WHERE ProdCodigo = ?`;
+            db.run(sqlUpdateStock, [detail.Cantidad, detail.ProdCodigo], function (err) {
+              if (err) {
+                db.run("ROLLBACK;");
+                return reject(err);
+              }
+
+              // 3. Eliminar el detalle de Entrada2
+              const sqlDeleteDetail = `DELETE FROM Entrada2 WHERE EntNumero = ? AND Serie = ?`;
+              db.run(sqlDeleteDetail, [entNumero, serie], function (err) {
+                if (err) {
+                  db.run("ROLLBACK;");
+                  return reject(err);
+                }
+
+                db.run("COMMIT;", (commitErr) => {
+                  if (commitErr) {
+                    db.run("ROLLBACK;");
+                    return reject(commitErr);
+                  }
+                  resolve({ message: "✅ Detalle eliminado correctamente y stock revertido.", changes: this.changes });
+                });
+              });
+            });
+          });
+        });
       });
     });
   },

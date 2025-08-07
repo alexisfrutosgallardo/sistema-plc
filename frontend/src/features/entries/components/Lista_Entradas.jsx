@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { API_BASE_URL } from '../../../config/config';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Trash2, Plus, ArrowUp, ArrowDown, Edit, CheckCircle2, XCircle } from 'lucide-react';
@@ -58,7 +58,7 @@ export default function Lista_Entradas({ usuario }) {
   // Nuevo estado para controlar si ya existe una entrada abierta
   const [hasOpenEntryExists, setHasOpenEntryExists] = useState(false);
 
-  const fetchEntradas = async () => {
+  const fetchEntradas = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/entrada?sortBy=${sortColumn}&order=${sortDirection}`);
       const data = await res.json();
@@ -73,7 +73,7 @@ export default function Lista_Entradas({ usuario }) {
       console.error("❌ Error al cargar entradas:", err);
       setMensaje('❌ No se pudo conectar al servidor o error al cargar entradas.');
     }
-  };
+  }, [sortColumn, sortDirection]);
 
   const checkOpenEntryStatus = async () => {
     try {
@@ -93,7 +93,7 @@ export default function Lista_Entradas({ usuario }) {
   useEffect(() => {
     fetchEntradas();
     checkOpenEntryStatus(); // Verificar al cargar la lista
-  }, [sortColumn, sortDirection]);
+  }, [sortColumn, sortDirection, fetchEntradas]);
 
   const fetchDetalles = async (entNumero) => {
     try {

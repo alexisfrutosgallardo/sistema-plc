@@ -87,7 +87,7 @@ const entryController = {
     }
   },
 
-  // ✅ NUEVO MÉTODO: Agregar un detalle a una entrada existente
+  // Agregar un detalle a una entrada existente
   addEntryDetail: async (req, res) => {
     const { entNumero } = req.params;
     const detailData = req.body; // Un solo objeto de detalle
@@ -163,7 +163,7 @@ const entryController = {
     }
   },
 
-  // Eliminar una entrada
+  // Eliminar una entrada completa
   deleteEntry: async (req, res) => {
     const { entNumero } = req.params;
     try {
@@ -208,6 +208,21 @@ const entryController = {
     } catch (err) {
       console.error("❌ Error al verificar entradas abiertas:", err.message);
       res.status(500).json({ error: "Error interno del servidor al verificar entradas abiertas." });
+    }
+  },
+
+  // Eliminar un detalle de entrada
+  deleteEntryDetail: async (req, res) => {
+    const { entNumero, serie } = req.params;
+    try {
+      const result = await entryRepository.deleteEntryDetail(parseInt(entNumero), serie);
+      if (result.changes === 0) {
+        return res.status(404).json({ error: "Detalle no encontrado o ya eliminado." });
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("❌ Error al eliminar detalle de entrada:", err.message);
+      res.status(500).json({ error: "Error al eliminar el detalle de la entrada." });
     }
   },
 };

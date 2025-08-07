@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { API_BASE_URL } from '../../../config/config';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Printer } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import JsBarcode from 'jsbarcode';
+import AuthModal from '../../auth/components/AuthModal'; // ✅ Importar el nuevo modal de autenticación
+
+// URL del middleware de la báscula
+const WEIGHT_MIDDLEWARE_URL = 'http://localhost:3001/weight';
 
 // Función para obtener fecha local en formato YYYY-MM-DD
 function getFechaLocal(date = new Date()) {
@@ -54,6 +59,7 @@ const formatDateToDDMMYYYYHHMMSS = (inputDate) => {
 };
 
 export default function Registro_Entrada_Operador({ usuario }) {
+  const navigate = useNavigate();
 
   const [formCabecera, setFormCabecera] = useState({
     EntNumero: null,
@@ -68,19 +74,79 @@ export default function Registro_Entrada_Operador({ usuario }) {
   });
 
   const [productosDisponibles, setProductosDisponibles] = useState([]);
-  const [productosSeleccionados, setProductosSeleccionados] = useState([]); // Esto será para los detalles A AGREGAR
   const [mensaje, setMensaje] = useState('');
   const [tipoMensaje, setTipoMensaje] = useState('');
   const [nextGlobalSerie, setNextGlobalSerie] = useState(0);
-  const [loading, setLoading] = useState(true); // Nuevo estado para controlar la carga inicial
+  const [loading, setLoading] = useState(true);
 
   // Estado para almacenar los detalles YA REGISTRADOS y mostrados en la tabla
   const [detallesRegistrados, setDetallesRegistrados] = useState([]);
 
+  // Nuevo estado para el peso de la báscula
+  const [pesoBascule, setPesoBascule] = useState(null);
+  const [errorPesoBascule, setErrorPesoBascule] = useState(null);
+
+  // Nuevo estado para almacenar el último detalle guardado, listo para imprimir con F9
+  const [lastSavedDetailForPrint, setLastSavedDetailForPrint] = useState(null);
+
+  // ✅ Estados para el modal de autenticación
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [detailToDeletePendingAuth, setDetailToDeletePendingAuth] = useState(null);
+
+
+  const fetchDetallesRegistrados = useCallback(async () => {
+    if (!formCabecera.EntNumero) return [];
+    try {
+      const res = await fetch(`${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle`);
+      const data = await res.json();
+      if (res.ok) {
+        const detalles = data.map(det => ({
+          ...det,
+          Cantidad: String(det.Cantidad),
+          Fecha: getFechaLocal(new Date(det.Fecha)),
+          FechaIngr: det.FechaIngr ? getFechaLocal(new Date(det.FechaIngr)) : '',
+        }));
+        setDetallesRegistrados(detalles);
+        return detalles;
+      }
+    } catch (err) {
+      // Manejo de error opcional
+    }
+    return [];
+  }, [formCabecera.EntNumero]);
+
+
+  // Efecto para obtener el peso de la báscula continuamente
+  useEffect(() => {
+    let intervalId;
+    const fetchWeight = async () => {
+      try {
+        const response = await fetch(WEIGHT_MIDDLEWARE_URL);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        setPesoBascule(data.weight);
+        setErrorPesoBascule(null);
+      } catch (error) {
+        console.error("Error al obtener peso de la báscula:", error);
+        setPesoBascule(null);
+        setErrorPesoBascule('No se pudo conectar con la báscula o leer el peso.');
+        setMensaje('❌ Error: No se pudo conectar con la báscula o leer el peso.');
+        setTipoMensaje('error');
+      }
+    };
+
+    fetchWeight();
+    intervalId = setInterval(fetchWeight, 1000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
 
   useEffect(() => {
     const fetchOpenEntryAndDetails = async () => {
-      setLoading(true); // Iniciar carga
+      setLoading(true);
       try {
         const res = await fetch(`${API_BASE_URL}/entrada/abierta`, {
           headers: { 'Content-Type': 'application/json' },
@@ -96,18 +162,17 @@ export default function Registro_Entrada_Operador({ usuario }) {
             Comentario: data.Comentario,
             FechaCat: data.FechaCat,
             ProdCodigo: data.ProdCodigo,
-            FechaCura: data.FechaCura, // Mantener el formato original de la DB para FechaCura
+            FechaCura: data.FechaCura,
             Usuario: data.Usuario,
           });
 
-          // Cargar los detalles existentes para esta entrada
           const resDetalles = await fetch(`${API_BASE_URL}/entrada/${data.EntNumero}/detalle`);
           const dataDetalles = await resDetalles.json();
           if (resDetalles.ok) {
             setDetallesRegistrados(dataDetalles.map(det => ({
               ...det,
-              Cantidad: String(det.Cantidad), // Asegurarse de que Cantidad sea string para el input type="number"
-              Fecha: getFechaLocal(new Date(det.Fecha)), // Formatear fecha para el input type="date"
+              Cantidad: String(det.Cantidad),
+              Fecha: getFechaLocal(new Date(det.Fecha)),
               FechaIngr: det.FechaIngr ? getFechaLocal(new Date(det.FechaIngr)) : '',
             })));
           } else {
@@ -117,18 +182,17 @@ export default function Registro_Entrada_Operador({ usuario }) {
           }
 
         } else {
-          // Si no hay entrada abierta, mostrar mensaje informativo y deshabilitar formulario
           setTipoMensaje('info');
           setMensaje(data.error || 'No hay ninguna entrada con estado "Abierto" para cargar detalles. El supervisor debe crear una primero.');
-          setFormCabecera(prev => ({ ...prev, EntNumero: null })); // Indicar que no hay entrada abierta
+          setFormCabecera(prev => ({ ...prev, EntNumero: null }));
         }
       } catch (err) {
         console.error("❌ Error al cargar la entrada abierta:", err);
         setTipoMensaje('error');
         setMensaje('❌ No se pudo conectar al servidor para cargar la entrada abierta.');
-        setFormCabecera(prev => ({ ...prev, EntNumero: null })); // Indicar que no hay entrada abierta
+        setFormCabecera(prev => ({ ...prev, EntNumero: null }));
       } finally {
-        setLoading(false); // Finalizar carga
+        setLoading(false);
       }
     };
 
@@ -168,7 +232,6 @@ export default function Registro_Entrada_Operador({ usuario }) {
     return productosDisponibles.find(p => p.ProdCodigo === formCabecera?.ProdCodigo);
   }, [formCabecera?.ProdCodigo, productosDisponibles]);
 
-  // printTicket envuelto en useCallback
   const printTicket = useCallback((ticketData, copyNumber) => {
     const { ProdNombre, NroCorte, Cantidad, FechaCat, Serie } = ticketData;
 
@@ -185,24 +248,24 @@ export default function Registro_Entrada_Operador({ usuario }) {
     printWindow.document.write('<!DOCTYPE html><html><head><title>Ticket de Entrada</title>');
     printWindow.document.write(`
       <style>
-        body { font-family: monospace; font-size: 20px; margin: 0; padding: 0; }
+        body { font-family: monospace; font-size: 12px; margin: 0; padding: 0; }
         .ticket-container {
-          display: flex; /* ✅ Cambiado a flex para mejor control de alineación */
-          flex-direction: column; /* ✅ Cambiado a columna para mejor alineación */
-          align-items: center; /* ✅ Alinea el contenido al centro */
-          justify-content: center; /* ✅ Centra el contenido vertical y horizontalmente */
-          padding: 5mm; /* ✅ Padding de 5mm alrededor del ticket */
-          border: 1px solid black; /* border para el ticket */
-          margin: 2mm; /* ✅ Margen de 2mm alrededor del ticket */
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 5mm;
+          border: 1px solid black;
+          margin: 2mm;
           box-sizing: border-box;
-          width: 45mm; /* ✅ Ancho del ticket */
-          text-align: center; /* ✅ Centra todo el texto dentro del contenedor */
+          width: 70mm;
+          text-align: center;
         }
         svg { 
-          width: 100%; /* ✅ Ancho del SVG */
-          height: 80px;  /* ✅ Altura de 80px para el logo */
-          display: block; /* ✅ Asegura que el SVG ocupe todo el ancho disponible */
-          margin: 0 auto; /* ✅ Centra el SVG horizontalmente */
+          width: 100%; 
+          height: 80px; 
+          display: block; 
+          margin: 0 auto; 
         }
         @media print {
           body { -webkit-print-color-adjust: exact; }
@@ -213,13 +276,13 @@ export default function Registro_Entrada_Operador({ usuario }) {
     printWindow.document.write('</head><body>');
 
     const ticketHtml = `
-      <div class="ticket-container"> <!-- Aplicar la clase al contenedor principal del ticket -->
-        <div style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">${ProdNombre}</div>
+      <div class="ticket-container">
+        <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">${ProdNombre}</div>
         <div style="margin-bottom: 10px;">OP ${NroCorte}</div>
         <svg id="barcode-${Serie}-${copyNumber}"></svg>
-        <div style="margin-top: 5px; font-size: 12px; ">${Serie}</div>
-        <div style="margin-top: 20px; font-size: 20px; font-weight: bold;">${Cantidad} kg</div>
-        <div style="margin-top: 5px; font-size: 12px;">${formatDateToDDMMYYYYHHMMSS(FechaCat)}</div>
+        <div style="margin-top: 5px;">${Serie}</div>
+        <div style="margin-top: 10px; font-size: 14px;">${Cantidad} kg</div>
+        <div style="margin-top: 5px;">${formatDateToDDMMYYYYHHMMSS(FechaCat)}</div>
       </div>
     `;
     printWindow.document.write(ticketHtml);
@@ -233,11 +296,11 @@ export default function Registro_Entrada_Operador({ usuario }) {
           const barcodeElement = printWindow.document.getElementById(`barcode-${Serie}-${copyNumber}`);
           if (barcodeElement) {
             JsBarcode(barcodeElement, Serie, {
-              format: "CODE128", /* ✅ Formato de código de barras */
-              displayValue: false, /* ✅ No mostrar el valor del código de barras */
-              height: 70, /* ✅ Altura del código de barras */
-              width: 2.5, /* ✅ Grosor de las barras */
-              margin: 0, /* ✅ Margen entre el código de barras y el contenedor */
+              format: "CODE128",
+              displayValue: false,
+              height: 80,
+              width: 1,
+              margin: 0,
             });
             printWindow.print();
             printWindow.close();
@@ -256,211 +319,261 @@ export default function Registro_Entrada_Operador({ usuario }) {
     };
   }, [setMensaje, setTipoMensaje]);
 
-  const handleAgregarProducto = () => {
-    console.log("Intentando agregar producto...");
+  // Función: Capturar peso y guardar un solo detalle (para F8)
+  const handleCaptureAndSaveWeight = useCallback(async () => {
+    console.log("F8/Botón 'Capturar y Guardar' presionado.");
+    setMensaje('');
+    setTipoMensaje('');
+    setLastSavedDetailForPrint(null);
+  
+    if (!usuario?.legajo) {
+      setTipoMensaje('error');
+      setMensaje('❌ No se detectó el usuario autenticado. Por favor, inicie sesión.');
+      return;
+    }
     if (!formCabecera.EntNumero || formCabecera.Estado !== 'Abierto') {
       setTipoMensaje('error');
       setMensaje('❌ No hay una entrada abierta o no está en estado "Abierto" para agregar productos. El supervisor debe crear una o cambiar su estado.');
-      console.log("Error: No hay entrada abierta o no está en estado 'Abierto'.");
       return;
     }
     if (!formCabecera.ProdCodigo) {
       setTipoMensaje('error');
       setMensaje('⚠️ La cabecera de la entrada abierta no tiene un Producto Principal definido.');
-      console.log("Error: Producto Principal no definido en la cabecera.");
       return;
     }
-
+    if (pesoBascule === null || parseFloat(pesoBascule) <= 0) {
+      setTipoMensaje('error');
+      setMensaje('⚠️ No se ha detectado un peso válido de la báscula (debe ser > 0). Por favor, asegúrate de que esté conectada y funcionando.');
+      return;
+    }
+  
     const newSerie = String(nextGlobalSerie);
-    setNextGlobalSerie(prev => prev + 1);
-
-    setProductosSeleccionados(prev => {
-      const newProducts = [
-        ...prev,
-        {
-          ProdCodigo: formCabecera.ProdCodigo,
-          Serie: newSerie,
-          Cantidad: '',
-          Fecha: getFechaLocal(),
-          FechaCura: formCabecera.FechaCura,
-          FechaIngr: getFechaLocal(),
-          Estado: 'Activo',
-          Usuario: usuario.legajo,
-          FechaCat: getFechaHoraLocal(),
-          Iten: detallesRegistrados.length + prev.length + 1 // Iten basado en detalles ya registrados + nuevos
-        }
-      ];
-      console.log("Producto agregado a la lista de pendientes. Productos seleccionados (después de set):", newProducts);
-      return newProducts;
-    });
-    setMensaje('');
-    setTipoMensaje('');
-  };
-
-  const handleProductoChange = (index, field, value) => {
-    const nuevosProductos = [...productosSeleccionados];
-    nuevosProductos[index][field] = value;
-    setProductosSeleccionados(nuevosProductos);
-    console.log(`Producto en índice ${index} actualizado. Campo: ${field}, Valor: ${value}`);
-  };
-
-  const handleEliminarProducto = (index) => {
-    setProductosSeleccionados(prev => prev.filter((_, i) => i !== index));
-    console.log(`Producto en índice ${index} eliminado de la lista de pendientes.`);
-  };
-
-  const handleSubmitDetalles = useCallback(async (e) => {
-    if (e && typeof e.preventDefault === 'function') {
-      e.preventDefault();
-    }
-    console.log("Iniciando handleSubmitDetalles...");
-    setMensaje('');
-    setTipoMensaje('');
-
-    if (!usuario?.legajo) {
-      setTipoMensaje('error');
-      setMensaje('❌ No se detectó el usuario autenticado. Por favor, inicie sesión.');
-      console.log("Error: Usuario no autenticado.");
-      return;
-    }
-
-    if (!formCabecera.EntNumero || formCabecera.Estado !== 'Abierto') {
-      setTipoMensaje('error');
-      setMensaje('❌ No se pueden guardar los detalles porque la entrada no está en estado "Abierto".');
-      console.log("Error: Entrada no abierta.");
-      return;
-    }
-
-    if (productosSeleccionados.length === 0) {
-      setTipoMensaje('error');
-      setMensaje('⚠️ Debe agregar al menos un producto a la entrada para registrarlo.');
-      console.log("Error: No hay productos pendientes para registrar.");
-      return;
-    }
-
-    for (const prod of productosSeleccionados) {
-      if (!prod.Serie || prod.Cantidad === '' || parseFloat(prod.Cantidad) <= 0 || !prod.Fecha || !prod.FechaCura || !prod.Estado) {
-        setTipoMensaje('error');
-        setMensaje('⚠️ Por favor, complete todos los campos obligatorios de cada producto de entrada (Serie, Cantidad > 0, Fecha, Fecha Cura, Estado).');
-        console.log("Error de validación en producto:", prod);
-        return;
+    const detailPayload = {
+      ProdCodigo: formCabecera.ProdCodigo,
+      Serie: newSerie,
+      Cantidad: parseFloat(pesoBascule),
+      Fecha: getFechaLocal(),
+      FechaCura: formCabecera.FechaCura,
+      FechaIngr: getFechaLocal(),
+      Estado: 'Activo',
+      Usuario: usuario.legajo,
+      FechaCat: getFechaHoraLocal(),
+    };
+  
+    try {
+      console.log(`Enviando POST a ${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle con payload:`, detailPayload);
+      const res = await fetch(`${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(detailPayload)
+      });
+      const data = await res.json();
+      console.log("Respuesta del backend:", data);
+  
+      if (!res.ok) {
+        throw new Error(data.error || `Error al guardar el detalle con serie ${newSerie}.`);
       }
-    }
-
-    const productosPendientesACopiar = [...productosSeleccionados];
-    let allSuccessful = true;
-
-    for (const prod of productosPendientesACopiar) {
-      console.log("Procesando detalle para envío:", prod.Serie);
-      const detailPayload = {
-        ProdCodigo: prod.ProdCodigo,
-        Serie: prod.Serie,
-        Cantidad: parseFloat(prod.Cantidad),
-        Fecha: prod.Fecha,
-        FechaCura: formCabecera.FechaCura,
-        FechaIngr: prod.FechaIngr,
-        Estado: prod.Estado,
-        Usuario: usuario.legajo,
-        FechaCat: getFechaHoraLocal(),
-      };
-
-      try {
-        console.log(`Enviando POST a ${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle con payload:`, detailPayload);
-        const res = await fetch(`${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(detailPayload)
-        });
-        const data = await res.json();
-        console.log("Respuesta del backend:", data);
-
-        if (!res.ok) {
-          throw new Error(data.error || `Error al guardar el detalle con serie ${prod.Serie}.`);
-        }
-
-        setTipoMensaje('success');
-        setMensaje(`✅ Detalle con serie ${prod.Serie} registrado correctamente.`);
-        console.log(`Detalle con serie ${prod.Serie} guardado exitosamente.`);
-
-        const ticketData = {
-          ProdNombre: productoPrincipalSeleccionado?.ProdNombre || 'N/A',
-          NroCorte: formCabecera.NroCorte,
-          Cantidad: prod.Cantidad,
-          FechaCat: detailPayload.FechaCat,
-          Serie: prod.Serie,
-        };
-        console.log(`Imprimiendo tickets para serie ${prod.Serie} (después de guardar)...`);
-        printTicket(ticketData, 1);
-        printTicket(ticketData, 2);
-
-        setDetallesRegistrados(prev => [...prev, { ...prod, Iten: data.Iten }]);
-        setNextGlobalSerie(prev => prev + 1);
-
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-      } catch (err) {
-        console.error('❌ Error al procesar detalle de entrada:', err);
-        setTipoMensaje('error');
-        setMensaje(`❌ ${err.message || 'Ocurrió un error inesperado al procesar un detalle.'}`);
-        allSuccessful = false;
-        break;
-      }
-    }
-
-    if (allSuccessful) {
-      setMensaje('✅ Todos los detalles pendientes han sido registrados e impresos.');
+  
       setTipoMensaje('success');
-      setProductosSeleccionados([]);
+      setMensaje(`✅ Detalle registrado correctamente. Ahora presiona F9 para imprimir el ticket.`);
+  
+      // Recargar la lista de detalles desde el backend para mostrar la serie real
+      const nuevosDetalles = await fetchDetallesRegistrados();
+      if (data.Serie && nuevosDetalles) {
+        setLastSavedDetailForPrint(
+          nuevosDetalles.find(det => det.Serie === data.Serie) || null
+        );
+      } else {
+        setLastSavedDetailForPrint(null);
+      }
+      setNextGlobalSerie(prev => prev + 1);
+  
+    } catch (err) {
+      console.error('❌ Error al procesar detalle de entrada:', err);
+      setTipoMensaje('error');
+      setMensaje(`❌ ${err.message || 'Ocurrió un error inesperado al guardar el detalle.'}`);
     }
     setTimeout(() => setMensaje(''), 5000);
-    console.log("handleSubmitDetalles finalizado.");
   }, [
-    usuario, 
-    formCabecera, 
-    productosSeleccionados, 
-    productoPrincipalSeleccionado, 
+    usuario,
+    formCabecera,
+    pesoBascule,
+    nextGlobalSerie,
+    detallesRegistrados,
+    setMensaje,
+    setTipoMensaje,
+    setNextGlobalSerie,
+    setDetallesRegistrados,
+    setLastSavedDetailForPrint,
+    fetchDetallesRegistrados
+  ]);
+
+  // Función: Imprimir el ticket del último detalle guardado (para F9)
+  const handlePrintLastSavedTicket = useCallback(() => {
+    console.log("F9/Botón 'Imprimir Último Ticket' presionado.");
+    setMensaje('');
+    setTipoMensaje('');
+  
+    // Busca el último detalle registrado si no hay uno pendiente
+    const detalleParaImprimir = lastSavedDetailForPrint || (detallesRegistrados.length > 0 ? detallesRegistrados[detallesRegistrados.length - 1] : null);
+  
+    if (!detalleParaImprimir) {
+      setTipoMensaje('info');
+      setMensaje('⚠️ No hay ningún detalle guardado recientemente para imprimir. Presiona F8 primero.');
+      return;
+    }
+  
+    const ticketData = {
+      ProdNombre: productoPrincipalSeleccionado?.ProdNombre || 'N/A',
+      NroCorte: formCabecera.NroCorte,
+      Cantidad: detalleParaImprimir.Cantidad,
+      FechaCat: detalleParaImprimir.FechaCat,
+      Serie: detalleParaImprimir.Serie,
+    };
+    console.log(`Imprimiendo tickets para serie ${detalleParaImprimir.Serie}...`);
+    printTicket(ticketData, 1); // Primera copia
+    printTicket(ticketData, 2); // Segunda copia
+  
+    setMensaje('✅ Tickets impresos correctamente para el último detalle.');
+    setTipoMensaje('success');
+    setLastSavedDetailForPrint(null);
+  
+    setTimeout(() => setMensaje(''), 5000);
+  }, [
+    lastSavedDetailForPrint,
+    detallesRegistrados,
+    productoPrincipalSeleccionado,
+    formCabecera,
     printTicket,
     setMensaje,
     setTipoMensaje,
-    setProductosSeleccionados,
-    setDetallesRegistrados,
-    setNextGlobalSerie
+    setLastSavedDetailForPrint
   ]);
 
-  const handlePrintAllRegisteredDetails = useCallback(() => {
-    if (detallesRegistrados.length === 0) {
-      setMensaje('⚠️ No hay detalles registrados para imprimir.');
-      setTipoMensaje('info');
+  // ✅ Función para abrir el modal de autenticación antes de eliminar
+  const requestDeleteAuth = useCallback((detail) => {
+    setDetailToDeletePendingAuth(detail); // Guardar el detalle a eliminar
+    setIsAuthModalOpen(true); // Abrir el modal
+  }, []);
+
+  // ✅ Callback que se ejecuta si la autenticación es exitosa
+  const handleAuthSuccessForDeletion = useCallback(async () => {
+    if (!detailToDeletePendingAuth) return; // No hay detalle pendiente
+
+    console.log(`Autenticación exitosa para eliminar detalle con Serie: ${detailToDeletePendingAuth.Serie}`);
+    setMensaje('');
+    setTipoMensaje('');
+
+    if (!formCabecera.EntNumero || formCabecera.Estado !== 'Abierto') {
+      setTipoMensaje('error');
+      setMensaje('❌ La entrada no está en estado "Abierto". No se pueden eliminar detalles.');
+      setDetailToDeletePendingAuth(null); // Limpiar
       return;
     }
-    console.log("Iniciando impresión de todos los detalles registrados...");
-    detallesRegistrados.forEach(det => {
-      const ticketData = {
-        ProdNombre: productoPrincipalSeleccionado?.ProdNombre || 'N/A',
-        NroCorte: formCabecera.NroCorte,
-        Cantidad: det.Cantidad,
-        FechaCat: det.FechaCat,
-        Serie: det.Serie,
-      };
-      console.log(`Imprimiendo tickets para serie ${det.Serie} (desde F9)...`);
-      printTicket(ticketData, 1);
-      printTicket(ticketData, 2);
-    });
-    setMensaje('✅ Se han enviado a imprimir todos los tickets de los detalles registrados.');
+
+    try {
+      // Llamada al backend para eliminar el detalle
+      const res = await fetch(`${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle/${detailToDeletePendingAuth.Serie}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || `Error al eliminar el detalle con serie ${detailToDeletePendingAuth.Serie}.`);
+      }
+
+      setTipoMensaje('success');
+      setMensaje(`✅ Detalle con serie ${detailToDeletePendingAuth.Serie} eliminado correctamente y stock revertido.`);
+      
+      // Actualizar el estado local eliminando el detalle de la lista
+      setDetallesRegistrados(prev => prev.filter(det => det.Serie !== detailToDeletePendingAuth.Serie));
+
+    } catch (err) {
+      console.error('❌ Error al eliminar detalle de entrada:', err);
+      setTipoMensaje('error');
+      setMensaje(`❌ ${err.message || 'Ocurrió un error inesperado al eliminar el detalle.'}`);
+    } finally {
+      setDetailToDeletePendingAuth(null); // Limpiar el detalle pendiente
+      setTimeout(() => setMensaje(''), 5000);
+    }
+  }, [formCabecera, detailToDeletePendingAuth, setMensaje, setTipoMensaje, setDetallesRegistrados]);
+
+
+  // Función: Re-imprimir un ticket de un detalle ya registrado
+  const handleRePrintTicket = useCallback((detailToPrint) => {
+    console.log(`Intentando reimprimir ticket para Serie: ${detailToPrint.Serie}`);
+    setMensaje('');
+    setTipoMensaje('');
+
+    if (!formCabecera.EntNumero) {
+      setTipoMensaje('error');
+      setMensaje('❌ No hay una entrada activa para imprimir tickets.');
+      return;
+    }
+
+    const ticketData = {
+      ProdNombre: productoPrincipalSeleccionado?.ProdNombre || 'N/A',
+      NroCorte: formCabecera.NroCorte,
+      Cantidad: detailToPrint.Cantidad,
+      FechaCat: detailToPrint.FechaCat,
+      Serie: detailToPrint.Serie,
+    };
+    console.log(`Reimprimiendo tickets para serie ${detailToPrint.Serie}...`);
+    printTicket(ticketData, 1); // Primera copia
+    printTicket(ticketData, 2); // Segunda copia
+
+    setMensaje(`✅ Tickets reimpresos correctamente para la serie ${detailToPrint.Serie}.`);
     setTipoMensaje('success');
     setTimeout(() => setMensaje(''), 5000);
-  }, [detallesRegistrados, productoPrincipalSeleccionado, formCabecera, printTicket, setMensaje, setTipoMensaje]);
+  }, [formCabecera, productoPrincipalSeleccionado, printTicket, setMensaje, setTipoMensaje]);
+
+
+  // Función: Finalizar la entrada (ahora solo como confirmación, NO cierra la entrada)
+  const handleFinalizeEntry = useCallback(async () => {
+    console.log("Botón 'Finalizar Proceso' presionado.");
+    setMensaje('');
+    setTipoMensaje('');
+
+    if (!formCabecera.EntNumero) {
+      setTipoMensaje('error');
+      setMensaje('❌ No hay una entrada activa para finalizar.');
+      return;
+    }
+    if (formCabecera.Estado !== 'Abierto') {
+      setTipoMensaje('info');
+      setMensaje('⚠️ La entrada ya está cerrada o en otro estado. No es necesario finalizarla.');
+      return;
+    }
+    if (detallesRegistrados.length === 0) {
+      setTipoMensaje('info');
+      setMensaje('⚠️ No se han registrado detalles para esta entrada. Considera agregar productos antes de finalizar el proceso.');
+    }
+
+    setTipoMensaje('success');
+    setMensaje('✅ Proceso de entrada finalizado para esta sesión. La entrada permanece abierta para futuras adiciones.');
+    
+    setTimeout(() => {
+      setMensaje('');
+      navigate('/registro/lista-entradas'); // Redirige después de 1 segundo
+    }, 1000);
+
+  }, [
+    formCabecera, 
+    detallesRegistrados, 
+    setMensaje, 
+    setTipoMensaje,
+    navigate
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === 'F8') {
         event.preventDefault();
-        console.log("F8 presionado: Intentando registrar detalles.");
-        handleSubmitDetalles(); 
+        handleCaptureAndSaveWeight();
       } else if (event.key === 'F9') {
         event.preventDefault();
-        console.log("F9 presionado: Intentando imprimir todos los detalles registrados.");
-        handlePrintAllRegisteredDetails();
+        handlePrintLastSavedTicket();
       }
     };
 
@@ -469,7 +582,7 @@ export default function Registro_Entrada_Operador({ usuario }) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleSubmitDetalles, handlePrintAllRegisteredDetails]);
+  }, [handleCaptureAndSaveWeight, handlePrintLastSavedTicket]);
 
 
   if (loading) {
@@ -492,11 +605,8 @@ export default function Registro_Entrada_Operador({ usuario }) {
 
   const isEditable = formCabecera.Estado === 'Abierto';
 
-  console.log("Estado del botón - isEditable:", isEditable, "productosSeleccionados.length:", productosSeleccionados.length, "Disabled:", (!isEditable || productosSeleccionados.length === 0));
-
-
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-gray-50 shadow-lg rounded-lg mt-10">
+    <div className="max-w-7xl mx-auto p-6 bg-gray-50 shadow-lg rounded-lg mt-1">
       <h2 className="text-3xl font-bold mb-6 text-gray-800 text-center">
         Cargar Detalles de Entrada (Operador) - Entrada N° {formCabecera.EntNumero}
       </h2>
@@ -521,7 +631,7 @@ export default function Registro_Entrada_Operador({ usuario }) {
             <label className="block text-sm font-medium text-gray-700">Estado:</label>
             <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formCabecera.Estado}</p>
           </div>
-          <div className="md:col-span-2">
+          <div>
             <label className="block text-sm font-medium text-gray-700">Producto Principal:</label>
             <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">
               {productoPrincipalSeleccionado ? 
@@ -539,6 +649,18 @@ export default function Registro_Entrada_Operador({ usuario }) {
           </div>
         </div>
 
+        {/* Sección para mostrar el peso actual de la báscula */}
+        <div className="bg-blue-50 p-4 rounded-lg shadow-inner mt-6 text-center">
+            <h4 className="text-lg font-semibold text-blue-800">Peso Actual de la Báscula:</h4>
+            {errorPesoBascule ? (
+                <p className="text-red-600 font-medium text-xl">{errorPesoBascule}</p>
+            ) : (
+                <p className="text-blue-900 font-bold text-4xl mt-2">
+                    {pesoBascule !== null ? `${pesoBascule.toFixed(2)} kg` : 'Conectando...'}
+                </p>
+            )}
+        </div>
+
         {/* Tabla de Detalles YA REGISTRADOS */}
         {detallesRegistrados.length > 0 && (
           <div className="mt-8">
@@ -549,25 +671,50 @@ export default function Registro_Entrada_Operador({ usuario }) {
                   <tr className="bg-gray-100 border-b-2 border-gray-200">
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Ítem</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Producto</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Serie</th>
-                    <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Cantidad</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Serie</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Peso</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha Cura</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha Ingreso</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Estado</th>
+                    <th className="px-5 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan="2">Acciones</th> {/* Columna para ambos botones */}
                   </tr>
                 </thead>
                 <tbody>
-                  {detallesRegistrados.map((det, index) => (
+                  {[...detallesRegistrados]
+                    .sort((a, b) => Number(b.Serie) - Number(a.Serie)) // Ordena descendente por Serie (puedes usar Iten si prefieres)
+                    .map((det, index) => (
                     <tr key={det.Serie || index} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-5 py-3 text-sm">{det.Iten}</td>
                       <td className="px-5 py-3 text-sm">{productoPrincipalSeleccionado?.ProdNombre || 'N/A'} ({productoPrincipalSeleccionado?.TipProdNombre || 'N/A'})</td>
-                      <td className="px-5 py-3 text-sm">{det.Serie}</td>
+                      <td className="px-5 py-3 text-sm text-right">{det.Serie}</td>
                       <td className="px-5 py-3 text-sm text-right">{det.Cantidad}</td>
                       <td className="px-5 py-3 text-sm">{formatDateToDDMMYYYYHHMMSS(det.Fecha)}</td>
                       <td className="px-5 py-3 text-sm">{formatDateToDDMMYYYYHHMMSS(det.FechaCura)}</td>
                       <td className="px-5 py-3 text-sm">{det.FechaIngr ? formatDateToDDMMYYYYHHMMSS(det.FechaIngr) : '-'}</td>
                       <td className="px-5 py-3 text-sm">{det.Estado}</td>
+                      <td className="px-2 py-3 text-center"> {/* Celda para el botón de imprimir */}
+                        <button
+                          type="button"
+                          onClick={() => handleRePrintTicket(det)}
+                          className="text-blue-600 hover:text-blue-900 transition-colors mr-2"
+                          title="Reimprimir ticket"
+                          disabled={!isEditable}
+                        >
+                          <Printer size={20} />
+                        </button>
+                      </td>
+                      <td className="px-2 py-3 text-center"> {/* Celda para el botón de eliminar */}
+                        <button
+                          type="button"
+                          onClick={() => requestDeleteAuth(det)} /* ✅ Llama a la función para abrir el modal */
+                          className="text-red-600 hover:text-red-900 transition-colors"
+                          title="Eliminar detalle"
+                          disabled={!isEditable}
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -576,146 +723,39 @@ export default function Registro_Entrada_Operador({ usuario }) {
           </div>
         )}
 
-        {/* Formulario de Nuevos Detalles */}
-        <form onSubmit={handleSubmitDetalles} className="space-y-6 bg-white p-6 rounded-lg shadow-md">
-          {/* Sección de Productos a Ingresar (Nuevos Detalles) */}
-          <h3 className="font-semibold mt-6 text-xl text-gray-700 mb-4">Nuevos Productos a Ingresar</h3>
+        {/* Sección de Acciones para el Operador */}
+        <div className="space-y-6 bg-white p-6 rounded-lg shadow-md mt-6">
+          <h3 className="font-semibold text-xl text-gray-700 mb-4">Acciones del Operador</h3>
           {!isEditable && (
             <div className="p-3 mb-4 rounded-md bg-yellow-100 text-yellow-700 flex items-center gap-2">
               <span className="text-lg font-bold">!</span>
               La entrada está en estado "{formCabecera.Estado}". No se pueden agregar ni modificar detalles.
             </div>
           )}
-
-          {productosSeleccionados.length === 0 && (
-            <p className="text-center text-gray-500">Haz clic en "Agregar Producto" para añadir nuevas líneas de detalle.</p>
-          )}
-          {productosSeleccionados.map((item, index) => (
-            <div key={index} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end mb-4 p-4 border border-gray-200 rounded-md bg-gray-50">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Producto:</label>
-                <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-800">
-                  {productoPrincipalSeleccionado ? 
-                   `${productoPrincipalSeleccionado.ProdNombre} (${productoPrincipalSeleccionado.TipProdNombre})` : 
-                   'Producto no seleccionado'}
-                </p>
-                <input type="hidden" name="ProdCodigo" value={item.ProdCodigo} />
-              </div>
-              <div>
-                <label htmlFor={`Serie-${index}`} className="block text-sm font-medium text-gray-700">Serie:</label>
-                <input
-                  type="text"
-                  id={`Serie-${index}`}
-                  value={item.Serie}
-                  readOnly
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-800 cursor-not-allowed"
-                />
-              </div>
-              <div>
-                <label htmlFor={`Cantidad-${index}`} className="block text-sm font-medium text-gray-700">Cantidad:</label>
-                <input
-                  type="number"
-                  id={`Cantidad-${index}`}
-                  placeholder="Cantidad"
-                  min="0"
-                  step="0.01"
-                  value={item.Cantidad}
-                  onChange={e => handleProductoChange(index, 'Cantidad', e.target.value)}
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  required
-                  disabled={!isEditable}
-                />
-              </div>
-              <div>
-                <label htmlFor={`Fecha-${index}`} className="block text-sm font-medium text-gray-700">Fecha:</label>
-                <input
-                  type="date"
-                  id={`Fecha-${index}`}
-                  value={item.Fecha}
-                  onChange={e => handleProductoChange(index, 'Fecha', e.target.value)}
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  required
-                  disabled={!isEditable}
-                />
-              </div>
-              <div>
-                <label htmlFor={`FechaCura-${index}`} className="block text-sm font-medium text-gray-700">Fecha Cura:</label>
-                <input
-                  type="text"
-                  id={`FechaCura-${index}`}
-                  value={formatDateToDDMMYYYYHHMMSS(formCabecera.FechaCura)}
-                  readOnly
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-800 cursor-not-allowed"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor={`FechaIngr-${index}`} className="block text-sm font-medium text-gray-700">Fecha Ingreso (Opcional):</label>
-                <input
-                  type="date"
-                  id={`FechaIngr-${index}`}
-                  value={item.FechaIngr}
-                  onChange={e => handleProductoChange(index, 'FechaIngr', e.target.value)}
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={!isEditable}
-                />
-              </div>
-              <div>
-                <label htmlFor={`EstadoProducto-${index}`} className="block text-sm font-medium text-gray-700">Estado Producto:</label>
-                <select
-                  id={`EstadoProducto-${index}`}
-                  value={item.Estado}
-                  onChange={e => handleProductoChange(index, 'Estado', e.target.value)}
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  required
-                  disabled={!isEditable}
-                >
-                  <option value="Activo">Activo</option>
-                  <option value="Inactivo">Inactivo</option>
-                </select>
-              </div>
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={() => handleEliminarProducto(index)}
-                  className="w-full bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 transition-colors shadow-sm text-sm flex items-center justify-center gap-1"
-                  disabled={!isEditable}
-                >
-                  <Trash2 size={16} /> Eliminar
-                </button>
-              </div>
+        
+          <div className="flex flex-row justify-between items-center gap-8 mt-4 w-full max-w-2xl mx-auto">
+            <div className="w-full max-w-xs">
+              <button
+                type="button"
+                onClick={handleCaptureAndSaveWeight}
+                className="w-full bg-green-600 text-white px-5 py-3 rounded-md hover:bg-green-700 transition-colors shadow-md text-base font-medium flex items-center justify-center gap-2"
+                disabled={!isEditable || pesoBascule === null || parseFloat(pesoBascule) <= 0}
+              >
+                <Plus size={20} /> Capturar Peso y Guardar Línea (F8)
+              </button>
             </div>
-          ))}
-
-          <div className="flex justify-start gap-4 mt-4">
-            <button
-              type="button"
-              onClick={handleAgregarProducto}
-              className="bg-green-600 text-white px-5 py-2 rounded-md hover:bg-green-700 transition-colors shadow-md text-base font-medium flex items-center gap-2"
-              disabled={!isEditable}
-            >
-              <Plus size={20} /> Agregar Producto
-            </button>
-            <button
-              type="button"
-              onClick={() => setProductosSeleccionados([])}
-              className="bg-gray-400 text-white px-5 py-2 rounded-md hover:bg-gray-600 transition-colors shadow-md text-base font-medium"
-              disabled={!isEditable}
-            >
-              Limpiar Productos Pendientes
-            </button>
+            <div className="w-full max-w-xs">
+              <button
+                type="button"
+                onClick={handleFinalizeEntry}
+                className="w-full bg-purple-600 text-white py-3 px-6 rounded-md shadow-lg text-lg font-semibold hover:bg-purple-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                disabled={!isEditable}
+              >
+                Finalizar Proceso (Mantiene la Entrada Abierta)
+              </button>
+            </div>
           </div>
-
-          <div className="flex justify-center mt-6">
-            <button
-              type="submit"
-              className="w-full max-w-xs bg-blue-600 text-white py-3 px-6 rounded-md shadow-lg text-lg font-semibold hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              disabled={!isEditable || productosSeleccionados.length === 0}
-            >
-              Registrar Detalles y Imprimir
-            </button>
-          </div>
-        </form> {/* CIERRE DEL FORMULARIO */}
+        </div> {/* CIERRE DE SECCIÓN DE ACCIONES */}
 
       </div> {/* CIERRE DEL DIV PRINCIPAL DE LA PÁGINA */}
 
@@ -725,6 +765,15 @@ export default function Registro_Entrada_Operador({ usuario }) {
           {mensaje}
         </p>
       )}
+
+      {/* ✅ Modal de Autenticación */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccessForDeletion} // Callback para cuando la autenticación es exitosa
+        requiredRoles={['Supervisor', 'Admin']} // Roles que tienen permiso para eliminar
+        errorMessage="Credenciales de Supervisor o Admin requeridas para eliminar."
+      />
     </div>
   );
 }
