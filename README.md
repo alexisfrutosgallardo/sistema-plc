@@ -217,6 +217,11 @@ sistema-plc/
 │   ├── postcss.config.js
 │   └── tailwind.config.js
 │
+├── weight-middleware/
+│   ├── index.js
+│   ├── package.json
+│   └── package-lock.json
+│
 ├── .gitignore
 └── README.md
 ```
