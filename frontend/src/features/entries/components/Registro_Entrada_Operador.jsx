@@ -738,7 +738,7 @@ export default function Registro_Entrada_Operador({ usuario }) {
               <button
                 type="button"
                 onClick={handleCaptureAndSaveWeight}
-                className="w-full bg-green-600 text-white px-5 py-3 rounded-md hover:bg-green-700 transition-colors shadow-md text-base font-medium flex items-center justify-center gap-2"
+                className="w-full bg-green-600 text-white px-5 py-7 rounded-md hover:bg-green-700 transition-colors shadow-md text-base font-medium flex items-center justify-center gap-2"
                 disabled={!isEditable || pesoBascule === null || parseFloat(pesoBascule) <= 0}
               >
                 <Plus size={20} /> Capturar Peso y Guardar Línea (F8)

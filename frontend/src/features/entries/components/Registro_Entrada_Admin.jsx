@@ -447,7 +447,7 @@ export default function Registro_Entrada_Admin({ usuario, entNumeroParam }) {
             />
           </div>
           <div>
-            <label htmlFor="NroCorte" className="block text-sm font-medium text-gray-700">Número de Corte:</label>
+            <label htmlFor="NroCorte" className="block text-sm font-medium text-gray-700">Número de Corte/Operación:</label>
             <input
               type="text"
               id="NroCorte"

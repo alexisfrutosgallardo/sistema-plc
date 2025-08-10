@@ -5,8 +5,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, Box, Layers, LogOut, Weight, Scale, BarChart2, Lock, BookOpen, Activity, Clock, Check,
   Columns3, Sprout, Signpost, Factory, ToggleRight, RefreshCcwDot, Warehouse, ChartNoAxesCombined,
-  ArrowLeftRight, ClipboardList, Bolt, List, Monitor, Users, Truck,
-  ChevronDown, ChevronRight 
+  ArrowLeftRight, ClipboardList, Bolt, List, Monitor, Users, Truck, ChevronDown, ChevronRight,
+  Plus, 
 } from 'lucide-react';
 
 // Función de permisos
@@ -26,7 +26,7 @@ const MENU_CONFIG = [
       { nombre: 'Minisilo', icono: Factory, ruta: 'minisilo', permiso: 'Minisilo' },
       { nombre: 'Tipo de Blend', icono: Sprout, ruta: 'tipoblend', permiso: 'Tipo de blend' },
       { nombre: 'Máquinas', icono: Monitor, ruta: 'lista-maquinas', permiso: 'Lista de Máquinas' },
-      { nombre: 'Registro de Entrada', icono: ClipboardList, ruta: 'entrada', permiso: 'Registro de Entrada' },
+      { nombre: 'Registro de Entrada', icono: Plus, ruta: 'entrada', permiso: 'Registro de Entrada' },
       { nombre: 'Lista de Entradas', icono: ClipboardList, ruta: 'lista-entradas', permiso: 'Lista de Entradas' },
       { nombre: 'Silos', icono: Bolt, ruta: 'lista-silos', permiso: 'Lista de Silos' },
       { nombre: 'Relación Productos con Silos', icono: List, ruta: 'lista-relsilo1', permiso: 'ListaRelSilo1' },
@@ -105,7 +105,7 @@ const Sidebar = ({ usuario, onLogout, sidebarAbierto, setSidebarAbierto }) => {
     <div
       className={`fixed inset-y-0 left-0 w-64 bg-gray-900 text-white p-4 flex flex-col z-40
         transform ${sidebarAbierto ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
-        transition-transform duration-300 ease-in-out`}
+        transition-transform duration-300 ease-in-out overflow-y-auto`}
     >
       {/* Botón para cerrar el sidebar en móviles */}
       <button

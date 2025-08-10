@@ -264,7 +264,7 @@ export default function Lista_Entradas({ usuario }) {
                 <div className="flex items-center">Fecha {renderSortIcon('Fecha')}</div>
               </th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('NroCorte')}>
-                <div className="flex items-center">Nro. Corte {renderSortIcon('NroCorte')}</div>
+                <div className="flex items-center">Nro. Corte/Operación {renderSortIcon('NroCorte')}</div>
               </th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('Estado')}>
                 <div className="flex items-center">Estado {renderSortIcon('Estado')}</div>
