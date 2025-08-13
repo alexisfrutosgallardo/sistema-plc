@@ -3,7 +3,7 @@ import { API_BASE_URL } from '../../../config/config';
 import { Plus, Trash2, Printer } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import JsBarcode from 'jsbarcode';
-import AuthModal from '../../auth/components/AuthModal'; // ✅ Importar el nuevo modal de autenticación
+import AuthModal from '../../auth/components/AuthModal'; // Importar el nuevo modal de autenticación
 
 // URL del middleware de la báscula
 const WEIGHT_MIDDLEWARE_URL = 'http://localhost:3001/weight';
@@ -89,7 +89,7 @@ export default function Registro_Entrada_Operador({ usuario }) {
   // Nuevo estado para almacenar el último detalle guardado, listo para imprimir con F9
   const [lastSavedDetailForPrint, setLastSavedDetailForPrint] = useState(null);
 
-  // ✅ Estados para el modal de autenticación
+  // Estados para el modal de autenticación
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [detailToDeletePendingAuth, setDetailToDeletePendingAuth] = useState(null);
 
@@ -97,6 +97,7 @@ export default function Registro_Entrada_Operador({ usuario }) {
   const fetchDetallesRegistrados = useCallback(async () => {
     if (!formCabecera.EntNumero) return [];
     try {
+      // Direcciones sin /api/
       const res = await fetch(`${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle`);
       const data = await res.json();
       if (res.ok) {
@@ -148,6 +149,7 @@ export default function Registro_Entrada_Operador({ usuario }) {
     const fetchOpenEntryAndDetails = async () => {
       setLoading(true);
       try {
+        // Direcciones sin /api/
         const res = await fetch(`${API_BASE_URL}/entrada/abierta`, {
           headers: { 'Content-Type': 'application/json' },
         });
@@ -166,17 +168,18 @@ export default function Registro_Entrada_Operador({ usuario }) {
             Usuario: data.Usuario,
           });
 
+          // Direcciones sin /api/
           const resDetalles = await fetch(`${API_BASE_URL}/entrada/${data.EntNumero}/detalle`);
-          const dataDetalles = await resDetalles.json();
+          const dataDetalles = resDetalles.json(); 
           if (resDetalles.ok) {
-            setDetallesRegistrados(dataDetalles.map(det => ({
+            setDetallesRegistrados((await dataDetalles).map(det => ({ 
               ...det,
               Cantidad: String(det.Cantidad),
               Fecha: getFechaLocal(new Date(det.Fecha)),
               FechaIngr: det.FechaIngr ? getFechaLocal(new Date(det.FechaIngr)) : '',
             })));
           } else {
-            console.error('Error al cargar detalles de la entrada abierta:', dataDetalles.error);
+            console.error('Error al cargar detalles de la entrada abierta:', (await dataDetalles).error); 
             setMensaje('❌ Error al cargar detalles de la entrada abierta.');
             setTipoMensaje('error');
           }
@@ -198,12 +201,13 @@ export default function Registro_Entrada_Operador({ usuario }) {
 
     const fetchProductosYSerie = async () => {
       try {
+        // Direcciones sin /api/
         const resProductos = await fetch(`${API_BASE_URL}/producto`);
-        const dataProductos = await resProductos.json();
+        const dataProductos = resProductos.json();
         if (resProductos.ok) {
-          setProductosDisponibles(dataProductos);
+          setProductosDisponibles(await dataProductos); 
         } else {
-          throw new Error(dataProductos.error || 'Error al cargar productos disponibles.');
+          throw new Error((await dataProductos).error || 'Error al cargar productos disponibles.');
         }
       } catch (err) {
         console.error("❌ Error al cargar productos:", err);
@@ -212,12 +216,13 @@ export default function Registro_Entrada_Operador({ usuario }) {
       }
       
       try {
+        // Direcciones sin /api/
         const resSerie = await fetch(`${API_BASE_URL}/entrada/series-counters`);
-        const dataSerie = await resSerie.json();
+        const dataSerie = resSerie.json();
         if (resSerie.ok) {
-          setNextGlobalSerie(dataSerie.globalSerie + 1);
+          setNextGlobalSerie((await dataSerie).globalSerie + 1); 
         } else {
-          console.error("Error al obtener serie global:", dataSerie.error);
+          console.error("Error al obtener serie global:", (await dataSerie).error);
         }
       } catch (err) {
         console.error("Error de conexión al obtener serie global:", err);
@@ -232,92 +237,196 @@ export default function Registro_Entrada_Operador({ usuario }) {
     return productosDisponibles.find(p => p.ProdCodigo === formCabecera?.ProdCodigo);
   }, [formCabecera?.ProdCodigo, productosDisponibles]);
 
-  const printTicket = useCallback((ticketData, copyNumber) => {
-    const { ProdNombre, NroCorte, Cantidad, FechaCat, Serie } = ticketData;
+const printTicket = useCallback((ticketData) => {
+  const { ProdNombre, NroCorte, Cantidad, FechaCat, Serie } = ticketData;
+  
+  // Abrir ventana de impresión
+  const printWindow = window.open('', '_blank', 'height=900,width=1200');
+  
+  // Verificar si el pop-up fue bloqueado
+  if (!printWindow) {
+    setMensaje('⚠️ El bloqueador de pop-ups impidió la impresión del ticket. Por favor, deshabilítalo para este sitio.');
+    setTipoMensaje('info');
+    return;
+  }
 
-    const printWindow = window.open('', '_blank', 'height=400,width=300');
-    
-    if (!printWindow) {
-      setMensaje('⚠️ El bloqueador de pop-ups impidió la impresión del ticket. Por favor, deshabilítalo para este sitio.');
-      setTipoMensaje('info');
-      console.error("Error: La ventana de impresión fue bloqueada por el navegador.");
-      return;
-    }
+  // Generar contenido HTML del ticket
+  printWindow.document.open();
+  printWindow.document.write('<!DOCTYPE html><html><head><title>Ticket</title>');
+  
+  // Estilos CSS
+  printWindow.document.write(`
+    <style>
+      @page { 
+        size: 105mm 75mm; /* Ancho x Alto del ticket */
+        margin: 0; 
+        padding: 0; 
+      }
+      
+      html, body {
+        width: 100%;
+        height: 90%;
+        margin: 0;
+        padding: 0;
+      }
+      
+      .ticket-container { 
+        margin-top: 15mm; 
+        margin-right: -9mm; 
+        display: flex; 
+        flex-direction: row; 
+        justify-content: center; 
+        align-items: center; 
+        gap: 5mm; 
+        width: 100%; 
+        height: 100%; 
+        box-sizing: border-box; 
+      }
+      
+      .ticket-outer { 
+        width: 49mm; 
+        height: 100%; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        box-sizing: border-box; 
+      }
+      
+      .ticket-inner { 
+        width: 100%; 
+        height: 100%; 
+        display: flex; 
+        flex-direction: column; 
+        justify-content: flex-start; 
+        align-items: center; 
+        padding: 0; 
+        box-sizing: border-box; 
+        text-align: center; 
+      }
+      
+      .header-text { 
+        font-size: 28px; 
+        font-weight: bold; 
+        margin-bottom: 0mm; 
+        line-height: 1.2; 
+      }
+      
+      .op-text { 
+        font-size: 24px; 
+        margin-bottom: 2mm; 
+      }
+      
+      svg { 
+        width: 90%; 
+        height: 28mm; 
+        margin-bottom: 0mm; 
+      }
+      
+      .series-text { 
+        font-size: 14px; 
+        font-weight: bold; 
+        margin-top: 0mm; 
+      }
+      
+      .quantity-text { 
+        font-size: 28px; 
+        font-weight: bold; 
+        margin-top: 1mm; 
+        margin-bottom: 1mm; 
+      }
+      
+      .date-text { 
+        font-size: 18px; 
+        margin-top: 3mm; 
+      }
+      
+      @media print { 
+        html, body { 
+          page-break-before: avoid !important; 
+          page-break-after: avoid !important; 
+          page-break-inside: avoid !important; 
+          break-before: avoid !important; 
+          break-after: avoid !important; 
+          break-inside: avoid !important; 
+        } 
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  `);
+  
+  printWindow.document.write('</head><body>');
 
-    printWindow.document.open();
-    printWindow.document.write('<!DOCTYPE html><html><head><title>Ticket de Entrada</title>');
-    printWindow.document.write(`
-      <style>
-        body { font-family: monospace; font-size: 12px; margin: 0; padding: 0; }
-        .ticket-container {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 5mm;
-          border: 1px solid black;
-          margin: 2mm;
-          box-sizing: border-box;
-          width: 70mm;
-          text-align: center;
-        }
-        svg { 
-          width: 100%; 
-          height: 80px; 
-          display: block; 
-          margin: 0 auto; 
-        }
-        @media print {
-          body { -webkit-print-color-adjust: exact; }
-          .ticket-container { page-break-after: always; }
-        }
-      </style>
-    `);
-    printWindow.document.write('</head><body>');
+  // Función para generar el contenido de un ticket individual
+  const singleTicketHtmlContent = (idSuffix) => `
+    <div class="ticket-inner">
+      <div class="header-text">${ProdNombre}</div>
+      <div class="op-text">OP ${NroCorte}</div>
+      <svg id="barcode-${Serie}-${idSuffix}"></svg>
+      <div class="series-text">${Serie}</div>
+      <div class="quantity-text">${Cantidad} kg</div>
+      <div class="date-text">${formatDateToDDMMYYYYHHMMSS(FechaCat)}</div>
+    </div>
+  `;
 
-    const ticketHtml = `
+  // Contenedor principal del ticket
+  printWindow.document.write(`
+    <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
       <div class="ticket-container">
-        <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">${ProdNombre}</div>
-        <div style="margin-bottom: 10px;">OP ${NroCorte}</div>
-        <svg id="barcode-${Serie}-${copyNumber}"></svg>
-        <div style="margin-top: 5px;">${Serie}</div>
-        <div style="margin-top: 10px; font-size: 14px;">${Cantidad} kg</div>
-        <div style="margin-top: 5px;">${formatDateToDDMMYYYYHHMMSS(FechaCat)}</div>
+        <div class="ticket-outer">
+          ${singleTicketHtmlContent('left')}
+        </div>
+        <div class="ticket-outer">
+          ${singleTicketHtmlContent('right')}
+        </div>
       </div>
-    `;
-    printWindow.document.write(ticketHtml);
+    </div>
+  `);
 
-    printWindow.document.write('</body></html>');
-    printWindow.document.close();
+  printWindow.document.write('</body></html>');
+  printWindow.document.close();
 
-    printWindow.onload = () => {
-      setTimeout(() => {
-        try {
-          const barcodeElement = printWindow.document.getElementById(`barcode-${Serie}-${copyNumber}`);
-          if (barcodeElement) {
-            JsBarcode(barcodeElement, Serie, {
-              format: "CODE128",
-              displayValue: false,
-              height: 80,
-              width: 1,
-              margin: 0,
-            });
-            printWindow.print();
-            printWindow.close();
-          } else {
-            console.error(`Error: No se encontró el elemento SVG con ID barcode-${Serie}-${copyNumber} en la ventana de impresión.`);
-            printWindow.print();
-            printWindow.close();
-          }
-        } catch (e) {
-          console.error("Error al generar el código de barras o imprimir:", e);
-          if (printWindow && !printWindow.closed) {
-            printWindow.close();
-          }
+  // Configurar la impresión después de cargar la ventana
+  printWindow.onload = () => {
+    setTimeout(() => {
+      try {
+        // Generar código de barras izquierdo
+        const barcodeElementLeft = printWindow.document.getElementById(`barcode-${Serie}-left`);
+        if (barcodeElementLeft) {
+          JsBarcode(barcodeElementLeft, Serie, {
+            format: "CODE128",
+            displayValue: false,
+            height: 70,
+            width: 1,
+            margin: 0,
+          });
         }
-      }, 100);
-    };
-  }, [setMensaje, setTipoMensaje]);
+
+        // Generar código de barras derecho
+        const barcodeElementRight = printWindow.document.getElementById(`barcode-${Serie}-right`);
+        if (barcodeElementRight) {
+          JsBarcode(barcodeElementRight, Serie, {
+            format: "CODE128",
+            displayValue: false,
+            height: 70,
+            width: 1,
+            margin: 0,
+          });
+        } else {
+          console.error(`Error: No se encontró el elemento SVG con ID barcode-${Serie}-right.`);
+        }
+
+        // Imprimir y cerrar la ventana
+        printWindow.print();
+        printWindow.close();
+      } catch (e) {
+        // Manejar errores y cerrar la ventana si es necesario
+        if (printWindow && !printWindow.closed) {
+          printWindow.close();
+        }
+      }
+    }, 100);
+  };
+}, [setMensaje, setTipoMensaje]);
 
   // Función: Capturar peso y guardar un solo detalle (para F8)
   const handleCaptureAndSaveWeight = useCallback(async () => {
@@ -361,6 +470,7 @@ export default function Registro_Entrada_Operador({ usuario }) {
     };
   
     try {
+      // Direcciones sin /api/
       console.log(`Enviando POST a ${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle con payload:`, detailPayload);
       const res = await fetch(`${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle`, {
         method: 'POST',
@@ -431,8 +541,8 @@ export default function Registro_Entrada_Operador({ usuario }) {
       Serie: detalleParaImprimir.Serie,
     };
     console.log(`Imprimiendo tickets para serie ${detalleParaImprimir.Serie}...`);
-    printTicket(ticketData, 1); // Primera copia
-    printTicket(ticketData, 2); // Segunda copia
+    // Se llama a printTicket una sola vez, la función se encarga de duplicar
+    printTicket(ticketData); 
   
     setMensaje('✅ Tickets impresos correctamente para el último detalle.');
     setTipoMensaje('success');
@@ -450,13 +560,13 @@ export default function Registro_Entrada_Operador({ usuario }) {
     setLastSavedDetailForPrint
   ]);
 
-  // ✅ Función para abrir el modal de autenticación antes de eliminar
+  // Función para abrir el modal de autenticación antes de eliminar
   const requestDeleteAuth = useCallback((detail) => {
     setDetailToDeletePendingAuth(detail); // Guardar el detalle a eliminar
     setIsAuthModalOpen(true); // Abrir el modal
   }, []);
 
-  // ✅ Callback que se ejecuta si la autenticación es exitosa
+  // Callback que se ejecuta si la autenticación es exitosa
   const handleAuthSuccessForDeletion = useCallback(async () => {
     if (!detailToDeletePendingAuth) return; // No hay detalle pendiente
 
@@ -472,7 +582,7 @@ export default function Registro_Entrada_Operador({ usuario }) {
     }
 
     try {
-      // Llamada al backend para eliminar el detalle
+      // Direcciones sin /api/
       const res = await fetch(`${API_BASE_URL}/entrada/${formCabecera.EntNumero}/detalle/${detailToDeletePendingAuth.Serie}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -519,9 +629,9 @@ export default function Registro_Entrada_Operador({ usuario }) {
       FechaCat: detailToPrint.FechaCat,
       Serie: detailToPrint.Serie,
     };
-    console.log(`Reimprimiendo tickets para serie ${detailToPrint.Serie}...`);
-    printTicket(ticketData, 1); // Primera copia
-    printTicket(ticketData, 2); // Segunda copia
+    console.log(`Imprimiendo tickets para serie ${detailToPrint.Serie}...`);
+    // Se llama a printTicket una sola vez, la función se encarga de duplicar
+    printTicket(ticketData); 
 
     setMensaje(`✅ Tickets reimpresos correctamente para la serie ${detailToPrint.Serie}.`);
     setTipoMensaje('success');
@@ -681,42 +791,49 @@ export default function Registro_Entrada_Operador({ usuario }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...detallesRegistrados]
-                    .sort((a, b) => Number(b.Serie) - Number(a.Serie)) // Ordena descendente por Serie (puedes usar Iten si prefieres)
-                    .map((det, index) => (
-                    <tr key={det.Serie || index} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-5 py-3 text-sm">{det.Iten}</td>
-                      <td className="px-5 py-3 text-sm">{productoPrincipalSeleccionado?.ProdNombre || 'N/A'} ({productoPrincipalSeleccionado?.TipProdNombre || 'N/A'})</td>
-                      <td className="px-5 py-3 text-sm text-right">{det.Serie}</td>
-                      <td className="px-5 py-3 text-sm text-right">{det.Cantidad}</td>
-                      <td className="px-5 py-3 text-sm">{formatDateToDDMMYYYYHHMMSS(det.Fecha)}</td>
-                      <td className="px-5 py-3 text-sm">{formatDateToDDMMYYYYHHMMSS(det.FechaCura)}</td>
-                      <td className="px-5 py-3 text-sm">{det.FechaIngr ? formatDateToDDMMYYYYHHMMSS(det.FechaIngr) : '-'}</td>
-                      <td className="px-5 py-3 text-sm">{det.Estado}</td>
-                      <td className="px-2 py-3 text-center"> {/* Celda para el botón de imprimir */}
-                        <button
-                          type="button"
-                          onClick={() => handleRePrintTicket(det)}
-                          className="text-blue-600 hover:text-blue-900 transition-colors mr-2"
-                          title="Reimprimir ticket"
-                          disabled={!isEditable}
-                        >
-                          <Printer size={20} />
-                        </button>
-                      </td>
-                      <td className="px-2 py-3 text-center"> {/* Celda para el botón de eliminar */}
-                        <button
-                          type="button"
-                          onClick={() => requestDeleteAuth(det)} /* ✅ Llama a la función para abrir el modal */
-                          className="text-red-600 hover:text-red-900 transition-colors"
-                          title="Eliminar detalle"
-                          disabled={!isEditable}
-                        >
-                          <Trash2 size={20} />
-                        </button>
-                      </td>
+                  {/* Defensa contra "true is not iterable" */}
+                  {Array.isArray(detallesRegistrados) && detallesRegistrados.length > 0 ? (
+                    detallesRegistrados
+                      .sort((a, b) => Number(b.Serie) - Number(a.Serie)) // Ordena descendente por Serie (puedes usar Iten si prefieres)
+                      .map((det, index) => (
+                      <tr key={det.Serie || index} className="border-b border-gray-200 hover:bg-gray-50">
+                        <td className="px-5 py-3 text-sm">{det.Iten}</td>
+                        <td className="px-5 py-3 text-sm">{productoPrincipalSeleccionado?.ProdNombre || 'N/A'} ({productoPrincipalSeleccionado?.TipProdNombre || 'N/A'})</td>
+                        <td className="px-5 py-3 text-sm text-right">{det.Serie}</td>
+                        <td className="px-5 py-3 text-sm text-right">{det.Cantidad}</td>
+                        <td className="px-5 py-3 text-sm">{formatDateToDDMMYYYYHHMMSS(det.Fecha)}</td>
+                        <td className="px-5 py-3 text-sm">{formatDateToDDMMYYYYHHMMSS(det.FechaCura)}</td>
+                        <td className="px-5 py-3 text-sm">{det.FechaIngr ? formatDateToDDMMYYYYHHMMSS(det.FechaIngr) : '-'}</td>
+                        <td className="px-5 py-3 text-sm">{det.Estado}</td>
+                        <td className="px-2 py-3 text-center"> {/* Celda para el botón de imprimir */}
+                          <button
+                            type="button"
+                            onClick={() => handleRePrintTicket(det)}
+                            className="text-blue-600 hover:text-blue-900 transition-colors mr-2"
+                            title="Reimprimir ticket"
+                            disabled={!isEditable}
+                          >
+                            <Printer size={20} />
+                          </button>
+                        </td>
+                        <td className="px-2 py-3 text-center"> {/* Celda para el botón de eliminar */}
+                          <button
+                            type="button"
+                            onClick={() => requestDeleteAuth(det)} /* Llama a la función para abrir el modal */
+                            className="text-red-600 hover:text-red-900 transition-colors"
+                            title="Eliminar detalle"
+                            disabled={!isEditable}
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="10" className="px-5 py-3 text-sm text-center text-gray-500">No hay detalles registrados para esta entrada.</td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -766,7 +883,7 @@ export default function Registro_Entrada_Operador({ usuario }) {
         </p>
       )}
 
-      {/* ✅ Modal de Autenticación */}
+      {/* Modal de Autenticación */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}

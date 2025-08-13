@@ -1,13 +1,13 @@
 // weight-middleware/index.js
 const { SerialPort } = require('serialport');
-const { DelimiterParser } = require('@serialport/parser-delimiter'); // Cambiado a DelimiterParser
+const { DelimiterParser } = require('@serialport/parser-delimiter'); // ✅ Volvemos a DelimiterParser
 const express = require('express');
 const cors = require('cors');
 
 const app = express();
 const PORT = 3001; // Puerto para el middleware (diferente al de tu backend y frontend)
 
-const COM_PORT = 'COM4'; // ¡Asegúrate de que este sea el puerto correcto!
+const COM_PORT = 'COM3'; // ✅ COM3 según tu última configuración
 const BAUD_RATE = 9600;
 
 let currentWeight = null; // Variable para almacenar el último peso leído
@@ -23,15 +23,15 @@ app.use(cors({
 const port = new SerialPort({
   path: COM_PORT,
   baudRate: BAUD_RATE,
-  dataBits: 7,
-  parity: 'even',
+  dataBits: 7,    // ✅ 7 bits de datos
+  parity: 'none', // ✅ Sin paridad
   stopBits: 2,
   autoOpen: false // No abrir automáticamente para manejar errores
 });
 
-// Usar un DelimiterParser con '\r' (retorno de carro) como delimitador
-// Esto es crucial si la báscula sobrescribe en HyperTerminal
-const parser = port.pipe(new DelimiterParser({ delimiter: Buffer.from([0x0D]) })); // 0x0D es el código ASCII para '\r'
+// ✅ CAMBIO CLAVE: Usar DelimiterParser con retorno de carro (0x0D) como delimitador
+// La imagen de HyperTerminal y los logs HEX confirman que 0x0D se envía al final de la trama.
+const parser = port.pipe(new DelimiterParser({ delimiter: Buffer.from([0x0D]) }));
 
 // Manejar la apertura del puerto
 port.on('open', () => {
@@ -41,30 +41,34 @@ port.on('open', () => {
 // Manejar los datos recibidos del puerto serial
 parser.on('data', buffer => {
   // Convertir el Buffer a string para el parseo de texto
-  const data = buffer.toString('ascii'); 
+  // Usamos 'ascii' porque los caracteres como STX (0x02) son caracteres ASCII extendidos.
+  const data = buffer.toString('ascii').trim(); // ✅ .trim() para quitar posibles espacios en blanco extra
   
-  // También loguear en hexadecimal para depuración
+  // Loguear en hexadecimal para depuración
   console.log(`Datos crudos (ASCII): "${data}"`);
   console.log(`Datos crudos (HEX): ${buffer.toString('hex')}`);
 
   try {
-    // El formato esperado es: ;p`XXXXXXYYYYYY
-    // Donde XXXXXX son los 6 dígitos del peso y YYYYYY son otros 6 dígitos.
-    // El carácter STX () es 0x02 en HEX. Es posible que el parser lo incluya o no.
-    // La expresión regular busca ';p`' seguido de 6 dígitos para el peso y luego 6 dígitos más.
-    const match = data.match(/;p`(\d{6})(\d{6})/);
+    // ✅ Expresión regular ajustada para la báscula Gemini
+    // La trama completa en ASCII del HyperTerminal es "☻+p`0001390000"
+    // - \x02: Coincide con el carácter STX (0x02).
+    // - \+: Coincide con el signo más literalmente.
+    // - p`: Coincide con la cadena literal "p`".
+    // - (\d{6}): Captura los primeros 6 dígitos (el peso).
+    // - (\d{4}): Captura los siguientes 4 dígitos (el resto de la cadena, "0000").
+    const match = data.match(/\x02\+p`(\d{6})(\d{4})/);
 
     if (match) {
-      let rawWeightString = match[1]; // Captura la primera secuencia de 6 dígitos, ej: "000205"
+      let rawWeightString = match[1]; // Captura la secuencia de 6 dígitos, ej: "000139"
 
       // Parsear el peso: el último dígito es el primer decimal
-      let integerPart = rawWeightString.substring(0, rawWeightString.length - 1); // "00020"
-      let decimalPart = rawWeightString.substring(rawWeightString.length - 1);   // "5"
+      let integerPart = rawWeightString.substring(0, rawWeightString.length - 1); // "00013"
+      let decimalPart = rawWeightString.substring(rawWeightString.length - 1);   // "9"
 
       // Eliminar ceros iniciales de la parte entera, pero asegurarse de que no quede vacío si es "0"
       integerPart = integerPart.replace(/^0+/, '') || '0';
 
-      const weightString = `${integerPart}.${decimalPart}`; // "20.5"
+      const weightString = `${integerPart}.${decimalPart}`; // "13.9"
       const weight = parseFloat(weightString);
 
       if (!isNaN(weight)) {
@@ -74,7 +78,7 @@ parser.on('data', buffer => {
         console.warn(`⚠️ No se pudo convertir a número el peso: "${weightString}" de la cadena: "${data}"`);
       }
     } else {
-      console.warn(`⚠️ No se encontró el patrón de peso esperado (ej: ;p\`XXXXXXYYYYYY) en la cadena: "${data}"`);
+      console.warn(`⚠️ No se encontró el patrón de peso esperado (ej: ☻+p\`XXXXXXYYYY) en la cadena: "${data}"`);
     }
   } catch (error) {
     console.error(`❌ Error al procesar datos de la báscula: ${error.message}`);
