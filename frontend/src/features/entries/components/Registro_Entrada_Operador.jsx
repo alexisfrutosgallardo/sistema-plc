@@ -257,6 +257,11 @@ const printTicket = useCallback((ticketData) => {
   // Estilos CSS
   printWindow.document.write(`
     <style>
+      /* Fuente global para todo el ticket */
+      body, .header-text, .op-text, .series-text, .quantity-text, .date-text {
+        font-family: "Arial Unicode MS", Arial, sans-serif !important;
+      }
+
       @page { 
         size: 105mm 75mm; /* Ancho x Alto del ticket */
         margin: 0; 
@@ -331,13 +336,13 @@ const printTicket = useCallback((ticketData) => {
       .quantity-text { 
         font-size: 28px; 
         font-weight: bold; 
-        margin-top: 1mm; 
+        margin-top: 2mm; 
         margin-bottom: 1mm; 
       }
       
       .date-text { 
         font-size: 18px; 
-        margin-top: 3mm; 
+        margin-top: 0mm; 
       }
       
       @media print { 
@@ -362,7 +367,7 @@ const printTicket = useCallback((ticketData) => {
       <div class="header-text">${ProdNombre}</div>
       <div class="op-text">OP ${NroCorte}</div>
       <svg id="barcode-${Serie}-${idSuffix}"></svg>
-      <div class="series-text">${Serie}</div>
+      <div class="series-text">${parseInt(Serie)}</div>
       <div class="quantity-text">${Cantidad} kg</div>
       <div class="date-text">${formatDateToDDMMYYYYHHMMSS(FechaCat)}</div>
     </div>
@@ -392,7 +397,7 @@ const printTicket = useCallback((ticketData) => {
         // Generar código de barras izquierdo
         const barcodeElementLeft = printWindow.document.getElementById(`barcode-${Serie}-left`);
         if (barcodeElementLeft) {
-          JsBarcode(barcodeElementLeft, Serie, {
+          JsBarcode(barcodeElementLeft, parseInt(Serie), {
             format: "CODE128",
             displayValue: false,
             height: 70,
@@ -404,7 +409,7 @@ const printTicket = useCallback((ticketData) => {
         // Generar código de barras derecho
         const barcodeElementRight = printWindow.document.getElementById(`barcode-${Serie}-right`);
         if (barcodeElementRight) {
-          JsBarcode(barcodeElementRight, Serie, {
+          JsBarcode(barcodeElementRight, parseInt(Serie), {
             format: "CODE128",
             displayValue: false,
             height: 70,
@@ -427,6 +432,7 @@ const printTicket = useCallback((ticketData) => {
     }, 100);
   };
 }, [setMensaje, setTipoMensaje]);
+
 
   // Función: Capturar peso y guardar un solo detalle (para F8)
   const handleCaptureAndSaveWeight = useCallback(async () => {
@@ -723,59 +729,65 @@ const printTicket = useCallback((ticketData) => {
 
       <div className="bg-white p-6 rounded-lg shadow-md mb-6">
         <h3 className="text-xl font-semibold mb-4 text-gray-700">Información de la Cabecera</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-md bg-blue-50 border-blue-200">
-          <h3 className="md:col-span-2 text-xl font-semibold text-blue-800 mb-3">Cabecera de Entrada (Solo Lectura)</h3>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Nro. Entrada:</label>
-            <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900 font-bold">{formCabecera.EntNumero}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Fecha:</label>
-            <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formatDateToDDMMYYYYHHMMSS(formCabecera.Fecha, 'DD-MM-YYYY HH:mm:ss')}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Número de Corte:</label>
-            <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formCabecera.NroCorte}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Estado:</label>
-            <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formCabecera.Estado}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Producto Principal:</label>
-            <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">
-              {productoPrincipalSeleccionado ? 
-               `${productoPrincipalSeleccionado.ProdNombre} (${productoPrincipalSeleccionado.TipProdNombre})` : 
-               'Cargando...'}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Fecha Cura (Cabecera):</label>
-            <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formatDateToDDMMYYYYHHMMSS(formCabecera.FechaCura, 'DD-MM-YYYY HH:mm:ss')}</p>
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700">Comentario:</label>
-            <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formCabecera.Comentario || 'N/A'}</p>
-          </div>
-        </div>
 
-        {/* Sección para mostrar el peso actual de la báscula */}
-        <div className="bg-blue-50 p-4 rounded-lg shadow-inner mt-6 text-center">
-            <h4 className="text-lg font-semibold text-blue-800">Peso Actual de la Báscula:</h4>
-            {errorPesoBascule ? (
-                <p className="text-red-600 font-medium text-xl">{errorPesoBascule}</p>
-            ) : (
-                <p className="text-blue-900 font-bold text-4xl mt-2">
-                    {pesoBascule !== null ? `${pesoBascule.toFixed(2)} kg` : 'Conectando...'}
+
+          {/* Nuevo contenedor padre para la cabecera y el peso */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6"> {/* ✅ CAMBIO CLAVE AQUÍ */}
+            {/* Div original de Cabecera de Entrada */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-md bg-blue-50 border-blue-200 lg:col-span-2"> {/* ✅ span 2 columnas */}
+              <h3 className="md:col-span-2 text-xl font-semibold text-blue-800 mb-3">Cabecera de Entrada (Solo Lectura)</h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Nro. Entrada:</label>
+                <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900 font-bold">{formCabecera.EntNumero}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Fecha:</label>
+                <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formatDateToDDMMYYYYHHMMSS(formCabecera.Fecha, 'DD-MM-YYYY HH:mm:ss')}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Número de Corte:</label>
+                <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formCabecera.NroCorte}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Estado:</label>
+                <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formCabecera.Estado}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Producto Principal:</label>
+                <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">
+                  {productoPrincipalSeleccionado ? 
+                  `${productoPrincipalSeleccionado.ProdNombre} (${productoPrincipalSeleccionado.TipProdNombre})` : 
+                  'Cargando...'}
                 </p>
-            )}
-        </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Fecha Cura (Cabecera):</label>
+                <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formatDateToDDMMYYYYHHMMSS(formCabecera.FechaCura, 'DD-MM-YYYY HH:mm:ss')}</p>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">Comentario:</label>
+                <p className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-blue-100 text-blue-900">{formCabecera.Comentario || 'N/A'}</p>
+              </div>
+            </div>
+
+            {/* Sección para mostrar el peso actual de la báscula */}
+            <div className="bg-blue-50 p-4 rounded-lg shadow-inner flex flex-col justify-center items-center"> 
+                <h4 className="text-lg font-semibold text-blue-800">Peso Actual de la Báscula:</h4>
+                {errorPesoBascule ? (
+                    <p className="text-red-600 font-medium text-xl">{errorPesoBascule}</p>
+                ) : (
+                    <p className="text-blue-900 font-bold text-4xl mt-2">
+                        {pesoBascule !== null ? `${pesoBascule.toFixed(2)} kg` : 'Conectando...'}
+                    </p>
+                )}
+            </div>
+      </div>
 
         {/* Tabla de Detalles YA REGISTRADOS */}
         {detallesRegistrados.length > 0 && (
           <div className="mt-8">
             <h3 className="font-semibold text-xl text-gray-700 mb-4">Detalles Ya Registrados</h3>
-            <div className="overflow-x-auto bg-white shadow-md rounded-lg">
+            <div className="overflow-x-auto overflow-y-auto max-h-56 bg-white shadow-md rounded-lg">
               <table className="min-w-full leading-normal">
                 <thead>
                   <tr className="bg-gray-100 border-b-2 border-gray-200">
@@ -783,11 +795,11 @@ const printTicket = useCallback((ticketData) => {
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Producto</th>
                     <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Serie</th>
                     <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Peso</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha</th>
+                {/* <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha</th> */}
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha Cura</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha Ingreso</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Estado</th>
-                    <th className="px-5 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan="2">Acciones</th> {/* Columna para ambos botones */}
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan="2">Acciones</th> {/* Columna para ambos botones */}
                   </tr>
                 </thead>
                 <tbody>
@@ -799,9 +811,9 @@ const printTicket = useCallback((ticketData) => {
                       <tr key={det.Serie || index} className="border-b border-gray-200 hover:bg-gray-50">
                         <td className="px-5 py-3 text-sm">{det.Iten}</td>
                         <td className="px-5 py-3 text-sm">{productoPrincipalSeleccionado?.ProdNombre || 'N/A'} ({productoPrincipalSeleccionado?.TipProdNombre || 'N/A'})</td>
-                        <td className="px-5 py-3 text-sm text-right">{det.Serie}</td>
+                        <td className="px-5 py-3 text-sm text-right">{parseInt(det.Serie)}</td>
                         <td className="px-5 py-3 text-sm text-right">{det.Cantidad}</td>
-                        <td className="px-5 py-3 text-sm">{formatDateToDDMMYYYYHHMMSS(det.Fecha)}</td>
+                    {/* <td className="px-5 py-3 text-sm">{formatDateToDDMMYYYYHHMMSS(det.Fecha)}</td> */}
                         <td className="px-5 py-3 text-sm">{formatDateToDDMMYYYYHHMMSS(det.FechaCura)}</td>
                         <td className="px-5 py-3 text-sm">{det.FechaIngr ? formatDateToDDMMYYYYHHMMSS(det.FechaIngr) : '-'}</td>
                         <td className="px-5 py-3 text-sm">{det.Estado}</td>
